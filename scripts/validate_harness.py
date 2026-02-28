@@ -48,8 +48,11 @@ def c_swebench():
 
 
 def c_docker():
-    r = subprocess.run(["docker", "info"], capture_output=True)
-    return r.returncode == 0, "Docker not running"
+    for cmd in ["docker", "podman"]:
+        r = subprocess.run([cmd, "info"], capture_output=True)
+        if r.returncode == 0:
+            return True, f"using {cmd}"
+    return False, "Neither docker nor podman available"
 
 
 def c_dataset():
