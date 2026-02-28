@@ -1,0 +1,18 @@
+[arms.sonnet_bare]
+agent = "mini_swe"
+model = "anthropic/claude-sonnet-4-5-20250929"
+floop = false
+description = "Sonnet without floop — performance ceiling"
+
+[arms.haiku_bare]
+agent = "mini_swe"
+model = "anthropic/claude-haiku-4-5-20251001"
+floop = false
+description = "Haiku without floop — performance floor"
+
+[arms.haiku_floop]
+agent = "mini_swe"
+model = "anthropic/claude-haiku-4-5-20251001"
+floop = true
+floop_store = "behaviors/store"
+description = "Haiku with trained floop behaviors — the treatment"

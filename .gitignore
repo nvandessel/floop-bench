@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+dist/
+build/
+results/results.db
+results/charts/
+results/transcripts/
+results/eval_output/
+work/
+logs/
+.claude/

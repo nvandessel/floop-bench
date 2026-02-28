@@ -13,3 +13,6 @@ dependencies = [
     "tomli>=2.0;python_version<'3.11'",
     "litellm>=1.0",
 ]
+
+[project.optional-dependencies]
+eval = ["swebench>=2.0"]
