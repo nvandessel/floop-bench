@@ -14,7 +14,7 @@ The harness supports multiple experimental arms (model + agent + floop configura
 - [uv](https://docs.astral.sh/uv/)
 - Docker or Podman
 - [floop](https://github.com/nvandessel/floop) CLI
-- `ANTHROPIC_API_KEY` environment variable
+- An API key for at least one model provider (see below)
 
 Optional:
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI (for the `claude_code` agent)
@@ -25,8 +25,30 @@ Optional:
 git clone git@github.com:nvandessel/floop-bench.git
 cd floop-bench
 uv sync
-export ANTHROPIC_API_KEY=sk-ant-...
 ```
+
+### API Keys
+
+The `mini_swe` agent uses [litellm](https://github.com/BerriAI/litellm), which supports most model providers. Set the API key for whichever provider your arms use:
+
+```bash
+# Anthropic (Claude Haiku, Sonnet, Opus)
+export ANTHROPIC_API_KEY=sk-ant-...
+
+# OpenAI (GPT-4o, GPT-4o-mini, o1, o3)
+export OPENAI_API_KEY=sk-...
+
+# Google (Gemini)
+export GEMINI_API_KEY=...
+
+# Groq (Llama, Mixtral — free tier available)
+export GROQ_API_KEY=gsk_...
+
+# Local models via Ollama (no key needed)
+# Just run: ollama serve
+```
+
+Set whichever keys you need for the models configured in `config/arms.toml`. Multiple can be set at once if your arms span providers.
 
 Validate the environment:
 
@@ -119,17 +141,19 @@ uv run python -m harness.swebench_eval --arm ARM [--split SPLIT] [--max-workers 
 Arms are defined in `config/arms.toml`. Each arm specifies a model, an agent backend, and whether floop is enabled:
 
 ```toml
-[arms.haiku_bare]
+[arms.gpt4o_bare]
 agent = "mini_swe"
-model = "anthropic/claude-haiku-4-5-20251001"
+model = "openai/gpt-4o"
 floop = false
 
-[arms.haiku_floop]
+[arms.gpt4o_mini_floop]
 agent = "mini_swe"
-model = "anthropic/claude-haiku-4-5-20251001"
+model = "openai/gpt-4o-mini"
 floop = true
 floop_store = "behaviors/store"
 ```
+
+Model strings use [litellm format](https://docs.litellm.ai/docs/providers) (`provider/model-name`). Any litellm-supported model works — Anthropic, OpenAI, Google, Groq, Ollama, and others. See `config/arms.toml` for examples.
 
 ### Agents
 

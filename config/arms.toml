@@ -1,3 +1,7 @@
+# Default arms: Anthropic Haiku vs Sonnet
+# Model strings use litellm format: "provider/model-name"
+# See https://docs.litellm.ai/docs/providers for all supported providers
+
 [arms.sonnet_bare]
 agent = "mini_swe"
 model = "anthropic/claude-sonnet-4-5-20250929"
@@ -15,4 +19,37 @@ agent = "mini_swe"
 model = "anthropic/claude-haiku-4-5-20251001"
 floop = true
 floop_store = "behaviors/store"
-description = "Haiku with trained floop behaviors — the treatment"
+description = "Haiku with trained floop behaviors"
+
+# --- Examples for other providers ---
+#
+# [arms.gpt4o_bare]
+# agent = "mini_swe"
+# model = "openai/gpt-4o"
+# floop = false
+# description = "GPT-4o baseline"
+#
+# [arms.gpt4o_mini_floop]
+# agent = "mini_swe"
+# model = "openai/gpt-4o-mini"
+# floop = true
+# floop_store = "behaviors/store"
+# description = "GPT-4o-mini with floop behaviors"
+#
+# [arms.gemini_bare]
+# agent = "mini_swe"
+# model = "gemini/gemini-2.0-flash"
+# floop = false
+# description = "Gemini 2.0 Flash baseline"
+#
+# [arms.qwen_local]
+# agent = "mini_swe"
+# model = "ollama/qwen2.5-coder:32b"
+# floop = false
+# description = "Local Qwen 2.5 Coder via Ollama"
+#
+# [arms.llama_groq]
+# agent = "mini_swe"
+# model = "groq/llama-3.3-70b-versatile"
+# floop = false
+# description = "Llama 3.3 70B via Groq (free tier)"
