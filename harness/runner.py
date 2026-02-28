@@ -8,6 +8,7 @@ import json
 import logging
 import shutil
 import subprocess
+import time
 from pathlib import Path
 
 from agents.base import Agent, RunResult
@@ -85,8 +86,6 @@ def run_single_task(
     5. Save transcript
     6. Cleanup
     """
-    import time
-
     instance_id = instance["instance_id"]
     task_dir = None
     start = time.monotonic()
