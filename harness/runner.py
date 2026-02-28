@@ -5,6 +5,7 @@ Runner: sets up repos, runs agents on SWE-bench tasks, captures diffs.
 from __future__ import annotations
 
 import json
+import logging
 import shutil
 import subprocess
 from pathlib import Path
@@ -12,6 +13,8 @@ from pathlib import Path
 from agents.base import Agent, RunResult
 from floop_integration.inject import get_floop_context
 from harness.config import ArmConfig, create_agent
+
+logger = logging.getLogger(__name__)
 
 
 def setup_repo(instance: dict, base_dir: Path) -> Path:
@@ -82,43 +85,64 @@ def run_single_task(
     5. Save transcript
     6. Cleanup
     """
+    import time
+
     instance_id = instance["instance_id"]
+    task_dir = None
+    start = time.monotonic()
 
-    # Setup repo
-    task_dir = setup_repo(instance, base_dir)
-
-    # Build floop context
-    floop_context = None
-    if arm.floop and arm.floop_store:
-        floop_context = get_floop_context(
-            Path(arm.floop_store), task_type="bug-fix"
-        )
-
-    # Create agent and run
-    agent = create_agent(arm)
-    result = agent.run(
-        problem_statement=instance["problem_statement"],
-        repo_dir=task_dir,
-        floop_context=floop_context,
-        timeout=timeout,
-    )
-
-    # Fill in instance and arm info
-    result.instance_id = instance_id
-    result.arm = arm.name
-
-    # Capture diff against base commit (agent may have staged changes)
     try:
-        diff = subprocess.run(
-            ["git", "diff", instance["base_commit"]],
-            capture_output=True,
-            text=True,
-            cwd=str(task_dir),
+        # Setup repo
+        task_dir = setup_repo(instance, base_dir)
+
+        # Build floop context
+        floop_context = None
+        if arm.floop and arm.floop_store:
+            floop_context = get_floop_context(
+                Path(arm.floop_store), task_type="bug-fix"
+            )
+
+        # Create agent and run
+        agent = create_agent(arm)
+        result = agent.run(
+            problem_statement=instance["problem_statement"],
+            repo_dir=task_dir,
+            floop_context=floop_context,
+            timeout=timeout,
         )
-        if diff.stdout:
-            result.model_patch = diff.stdout
-    except Exception:
-        pass
+
+        # Fill in instance and arm info
+        result.instance_id = instance_id
+        result.arm = arm.name
+
+        # Capture diff against base commit (agent may have staged changes)
+        try:
+            diff = subprocess.run(
+                ["git", "diff", instance["base_commit"]],
+                capture_output=True,
+                text=True,
+                cwd=str(task_dir),
+            )
+            if diff.stdout:
+                result.model_patch = diff.stdout
+        except Exception as exc:
+            logger.warning("Failed to capture diff for %s: %s", instance_id, exc)
+
+    except Exception as exc:
+        logger.error("Task %s/%s failed: %s", instance_id, arm.name, exc)
+        result = RunResult(
+            instance_id=instance_id,
+            arm=arm.name,
+            model_patch="",
+            model=arm.model,
+            floop_enabled=arm.floop,
+            status="error",
+            duration_seconds=time.monotonic() - start,
+            input_tokens=0,
+            output_tokens=0,
+            cost_usd=0.0,
+            error_message=str(exc),
+        )
 
     # Save transcript
     transcript_dir.mkdir(parents=True, exist_ok=True)
@@ -127,7 +151,8 @@ def run_single_task(
     result.transcript_path = str(transcript_path)
 
     # Cleanup
-    cleanup_repo(task_dir, base_dir)
+    if task_dir:
+        cleanup_repo(task_dir, base_dir)
 
     return result
 

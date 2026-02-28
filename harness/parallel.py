@@ -106,6 +106,8 @@ def run_parallel(
                 if on_complete:
                     on_complete(result, idx, total)
             except Exception as e:
-                print(f"Worker error: {e}")
+                # run_single_task now catches exceptions internally and
+                # returns error RunResults, so this should be rare
+                print(f"Worker error (task {idx}): {e}")
 
     return results

@@ -7,7 +7,8 @@ Loop:
 3. Execute commands via subprocess
 4. Feed output back to model
 5. Repeat until model outputs SUBMIT or step/cost limit reached
-6. Capture git diff as the patch
+
+The runner captures the git diff after the agent finishes.
 """
 
 from __future__ import annotations
