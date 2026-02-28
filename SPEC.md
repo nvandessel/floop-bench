@@ -593,7 +593,7 @@ This is the human-intensive part. For each failed task:
 
 ```bash
 floop learn \
-  --description "Django ORM: when a QuerySet method chains, verify it returns a new QuerySet rather than mutating in place" \
+  --right "Django ORM: when a QuerySet method chains, verify it returns a new QuerySet rather than mutating in place" \
   --tags "python,django,queryset,orm"
 ```
 

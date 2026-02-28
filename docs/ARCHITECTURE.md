@@ -41,7 +41,7 @@ analysis/charts.py → PNG/SVG
 | File | Role |
 |------|------|
 | `config.py` | Loads `arms.toml` and `splits.json`. Agent registry (lazy-loaded). |
-| `db.py` | SQLite with WAL mode. Thread-local connections. PK is `(instance_id, arm)`. |
+| `db.py` | SQLite with WAL mode. Context-managed connections. PK is `(instance_id, arm)`. |
 | `runner.py` | Repo checkout (bare clone + worktree), agent dispatch, diff capture, cleanup. |
 | `orchestrator.py` | Click CLI. Phase dispatch, queue building, resume, budget guard. |
 | `parallel.py` | ProcessPoolExecutor wrapper. Cost guard per task submission. |
@@ -93,7 +93,7 @@ CREATE TABLE runs (
 
 ## Resume
 
-The orchestrator is safe to interrupt and re-run. `load_completed()` returns all `(instance_id, arm)` pairs with status `completed` or `timeout`, and the queue skips them. `save_run()` uses `INSERT OR REPLACE`, so re-running a failed task overwrites the previous result.
+The orchestrator is safe to interrupt and re-run. `load_completed()` returns all `(instance_id, arm)` pairs with status `completed`, `timeout`, or `error`, and the queue skips them. `save_run()` uses `INSERT ... ON CONFLICT ... DO UPDATE` with `COALESCE` to preserve existing `resolved` values.
 
 ## Repo Isolation
 

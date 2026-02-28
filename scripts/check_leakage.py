@@ -55,7 +55,15 @@ def check_leakage():
     eval_patches = load_eval_patches()
     print(f"Checking {len(eval_ids)} eval task IDs for leakage...")
 
-    store_path = Path("behaviors/store")
+    # Read store path from arms config (resolves relative paths)
+    from harness.config import load_arms
+
+    arms = load_arms()
+    floop_arms = [a for a in arms.values() if a.floop and a.floop_store]
+    if not floop_arms:
+        print("No floop-enabled arms configured.")
+        return
+    store_path = Path(floop_arms[0].floop_store)
     behaviors = get_active_behaviors(store_path)
 
     if not behaviors:

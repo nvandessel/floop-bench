@@ -1,7 +1,7 @@
 """
-Generate train/eval split for SWE-bench Verified Mini.
+Generate train/eval split from SWE-bench Verified.
 
-Loads the 50-task dataset, stratifies by repo, and splits into:
+Samples 50 tasks from the full dataset, stratifies by repo, and splits into:
 - 30 train tasks (for floop behavior training)
 - 20 eval tasks (for the benchmark)
 

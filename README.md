@@ -56,7 +56,7 @@ Validate the environment:
 uv run python -m scripts.validate_harness
 ```
 
-All 8 checks should pass before running experiments.
+All checks should pass before running experiments.
 
 ## Usage
 

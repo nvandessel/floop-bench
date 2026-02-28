@@ -8,14 +8,13 @@ Each worker:
 
 The pool:
 - N workers (default: 4, configurable via --workers)
-- Shared task queue (thread-safe)
-- Each worker writes results to SQLite (thread-safe via WAL mode)
-- Cost guard checked before dequeuing each task
+- Each worker is a separate process (ProcessPoolExecutor)
+- Each worker writes results to SQLite (safe via WAL mode)
+- Cost guard checked before submitting each task
 """
 
 from __future__ import annotations
 
-import threading
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
@@ -23,8 +22,6 @@ from agents.base import RunResult
 from harness.config import ArmConfig
 from harness.db import get_total_cost, save_run
 from harness.runner import append_prediction, run_single_task
-
-_cost_lock = threading.Lock()
 
 
 def _worker_task(

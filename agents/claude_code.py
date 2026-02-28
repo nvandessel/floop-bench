@@ -80,18 +80,6 @@ class ClaudeCodeAgent:
                 cost_usd=0,
             )
 
-        # Capture diff
-        try:
-            diff = subprocess.run(
-                ["git", "diff"],
-                capture_output=True,
-                text=True,
-                cwd=str(repo_dir),
-            )
-            model_patch = diff.stdout
-        except Exception:
-            model_patch = ""
-
         # Parse metrics from Claude Code JSON output
         metrics = self._parse_output(result.stdout)
 
@@ -101,7 +89,7 @@ class ClaudeCodeAgent:
         return RunResult(
             instance_id="",
             arm="",
-            model_patch=model_patch,
+            model_patch="",  # filled by runner via git diff base_commit
             model=self.model,
             floop_enabled=floop_context is not None,
             status=status,

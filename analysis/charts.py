@@ -16,7 +16,6 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy import stats as sp_stats
 
 from harness.db import get_arm_stats, init_db
 
