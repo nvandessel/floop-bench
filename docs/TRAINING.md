@@ -54,7 +54,7 @@ These would contaminate the evaluation:
 
 ```bash
 floop learn \
-  --description "Django ORM: when a QuerySet method chains, verify it returns a new QuerySet rather than mutating in place" \
+  --right "Django ORM: when a QuerySet method chains, verify it returns a new QuerySet rather than mutating in place" \
   --tags "python,django,queryset,orm"
 ```
 

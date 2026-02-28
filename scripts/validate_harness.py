@@ -67,12 +67,20 @@ def c_split():
     if not p.exists():
         return False, "Run: uv run python -m scripts.generate_split"
     data = json.loads(p.read_text())
-    train_len = len(data.get("train", []))
-    eval_len = len(data.get("eval", []))
-    return (
-        train_len == 30 and eval_len == 20,
-        f"Expected 30/20, got {train_len}/{eval_len}",
-    )
+    train = data.get("train", [])
+    eval_ = data.get("eval", [])
+    train_len = len(train)
+    eval_len = len(eval_)
+    if train_len != 30 or eval_len != 20:
+        return False, f"Expected 30/20, got {train_len}/{eval_len}"
+    overlap = set(train) & set(eval_)
+    if overlap:
+        return False, f"Train/eval overlap: {overlap}"
+    train_dupes = len(train) - len(set(train))
+    eval_dupes = len(eval_) - len(set(eval_))
+    if train_dupes or eval_dupes:
+        return False, f"Duplicates: {train_dupes} in train, {eval_dupes} in eval"
+    return True, ""
 
 
 def c_claude_cli():
@@ -149,6 +157,19 @@ def c_floop():
     return r.returncode == 0, "floop CLI not found"
 
 
+def c_floop_store():
+    """Check that floop store is initialized for floop-enabled arms."""
+    from harness.config import load_arms
+
+    arms = load_arms()
+    for name, arm in arms.items():
+        if arm.floop and arm.floop_store:
+            store = Path(arm.floop_store)
+            if not (store / ".floop").exists() and not (store / "floop.db").exists():
+                return False, f"Floop store not initialized for arm '{name}' at {store}. Run: floop init --root {store}"
+    return True, ""
+
+
 def main():
     checks = [
         ("Python dependencies", c_deps),
@@ -159,6 +180,7 @@ def main():
         ("Claude Code CLI available", c_claude_cli),
         ("SQLite DB works", c_db),
         ("Floop CLI available", c_floop),
+        ("Floop store initialized", c_floop_store),
     ]
 
     passed = sum(check(name, fn) for name, fn in checks)

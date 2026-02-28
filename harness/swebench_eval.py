@@ -104,6 +104,10 @@ def import_swebench_results(arm: str, run_id: str) -> int:
     with open(report_path) as f:
         report = json.load(f)
 
+    # Log structure for debugging
+    top_keys = list(report.keys())[:10]
+    console.print(f"  Report keys: {top_keys} ({len(report)} total entries)")
+
     count = 0
     # SWE-bench report format: dict of instance_id -> {"resolved": bool, ...}
     # or {"resolved": [...], "unresolved": [...]}
@@ -120,7 +124,14 @@ def import_swebench_results(arm: str, run_id: str) -> int:
                 update_resolved(instance_id, arm, result["resolved"])
                 count += 1
 
-    console.print(f"[green]Imported {count} results for {arm}[/green]")
+    if count == 0:
+        console.print(
+            f"[yellow]Warning: zero results imported for {arm}. "
+            f"Report structure may not match expected format. "
+            f"Top-level keys: {top_keys}[/yellow]"
+        )
+    else:
+        console.print(f"[green]Imported {count} results for {arm}[/green]")
     return count
 
 

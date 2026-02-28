@@ -28,7 +28,7 @@ class RunResult:
         """Format as SWE-bench prediction JSONL entry."""
         return {
             "instance_id": self.instance_id,
-            "model_name_or_path": self.arm,
+            "model_name_or_path": self.model,
             "model_patch": self.model_patch,
         }
 

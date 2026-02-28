@@ -90,7 +90,9 @@ def run_single_task(
     # Build floop context
     floop_context = None
     if arm.floop and arm.floop_store:
-        floop_context = get_floop_context(Path(arm.floop_store))
+        floop_context = get_floop_context(
+            Path(arm.floop_store), task_type="bug-fix"
+        )
 
     # Create agent and run
     agent = create_agent(arm)

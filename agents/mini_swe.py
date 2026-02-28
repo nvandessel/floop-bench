@@ -12,6 +12,7 @@ Loop:
 
 from __future__ import annotations
 
+import logging
 import re
 import subprocess
 import time
@@ -20,6 +21,8 @@ from pathlib import Path
 import litellm
 
 from agents.base import RunResult
+
+logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """You are a software engineer fixing a bug in a repository.
 
@@ -124,8 +127,8 @@ class MiniSweAgent:
                 try:
                     cost = litellm.completion_cost(response)
                     total_cost += cost
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.warning("Failed to compute cost for %s: %s", self.model, exc)
 
                 assistant_text = response.choices[0].message.content or ""
                 messages.append({"role": "assistant", "content": assistant_text})
@@ -159,21 +162,11 @@ class MiniSweAgent:
             error_message = str(e)
 
         duration = time.monotonic() - start
-        try:
-            diff_result = subprocess.run(
-                ["git", "diff"],
-                capture_output=True,
-                text=True,
-                cwd=str(repo_dir),
-            )
-            model_patch = diff_result.stdout
-        except Exception:
-            model_patch = ""
 
         return RunResult(
             instance_id="",  # filled by caller
             arm="",  # filled by caller
-            model_patch=model_patch,
+            model_patch="",  # filled by runner via git diff base_commit
             model=self.model,
             floop_enabled=floop_context is not None,
             status=status,

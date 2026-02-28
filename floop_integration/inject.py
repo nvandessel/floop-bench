@@ -43,7 +43,7 @@ def build_floop_preamble(behaviors: list[dict]) -> str:
 
 
 def get_floop_context(
-    store_path: Path, context: str | None = None
+    store_path: Path, task_type: str | None = None
 ) -> str | None:
     """
     Get floop context for prompt injection.
@@ -51,7 +51,7 @@ def get_floop_context(
     Returns empty string if floop enabled but no active behaviors.
     Returns None only if called with no store (should not happen for floop arms).
     """
-    behaviors = get_active_behaviors(store_path, context=context)
+    behaviors = get_active_behaviors(store_path, task_type=task_type)
     if not behaviors:
         return ""
     return build_floop_preamble(behaviors)

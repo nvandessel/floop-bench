@@ -3,36 +3,48 @@
 from __future__ import annotations
 
 import json
+import logging
 import subprocess
 from pathlib import Path
 
+logger = logging.getLogger(__name__)
+
 
 def get_active_behaviors(
-    store_path: Path, context: str | None = None
+    store_path: Path, task_type: str | None = None
 ) -> list[dict]:
     """
     Get active behaviors from floop store via CLI.
 
     Args:
         store_path: Path to floop behavior store
-        context: Optional context string for activation filtering
+        task_type: Optional task type for activation filtering (e.g. "bug-fix")
 
     Returns:
         List of behavior dicts with keys like 'kind', 'content', 'tags'
     """
     cmd = ["floop", "active", "--json", "--root", str(store_path)]
-    if context:
-        cmd.extend(["--context", context])
+    if task_type:
+        cmd.extend(["--task", task_type])
 
     try:
         result = subprocess.run(
             cmd, capture_output=True, text=True, timeout=30,
         )
         if result.returncode != 0:
+            logger.warning(
+                "floop active failed (exit %d): %s",
+                result.returncode,
+                result.stderr.strip() or result.stdout.strip(),
+            )
             return []
         data = json.loads(result.stdout)
+        if "error" in data:
+            logger.warning("floop returned error: %s", data["error"])
+            return []
         return data.get("active", data.get("behaviors", []))
-    except (subprocess.TimeoutExpired, json.JSONDecodeError, FileNotFoundError):
+    except (subprocess.TimeoutExpired, json.JSONDecodeError, FileNotFoundError) as exc:
+        logger.warning("floop CLI unavailable or returned bad data: %s", exc)
         return []
 
 

@@ -31,14 +31,20 @@ def load_arms(config_path: Path | str = "config/arms.toml") -> dict[str, ArmConf
     with open(path, "rb") as f:
         data = tomllib.load(f)
 
+    config_dir = path.parent
     arms = {}
     for name, cfg in data.get("arms", {}).items():
+        floop_store = cfg.get("floop_store")
+        if floop_store:
+            store_path = Path(floop_store)
+            if not store_path.is_absolute():
+                floop_store = str((config_dir / store_path).resolve())
         arms[name] = ArmConfig(
             name=name,
             agent=cfg["agent"],
             model=cfg["model"],
             floop=cfg.get("floop", False),
-            floop_store=cfg.get("floop_store"),
+            floop_store=floop_store,
             description=cfg.get("description", ""),
         )
     return arms
