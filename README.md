@@ -1,33 +1,23 @@
 # floop-bench
 
-Benchmark harness measuring whether [floop](https://github.com/nvandessel/floop) closes the performance gap between a cheap model and an expensive model on real software engineering tasks.
+A benchmark harness for evaluating [floop](https://github.com/nvandessel/floop) on [SWE-bench](https://www.swebench.com/) tasks. Compares model performance with and without floop-injected behaviors across multiple experimental arms.
 
-**Headline result format:** "Haiku + floop closes X% of the gap with Sonnet on SWE-bench at Y% of the cost."
+## Overview
 
-## What This Measures
+floop-bench runs coding agents against real GitHub issues from the SWE-bench Verified dataset, then evaluates the generated patches using SWE-bench's Docker-based test harness. It's designed to be **agent-agnostic** — any agent that takes an issue and a repo and returns a diff can plug in.
 
-Three experimental arms run the same SWE-bench tasks:
-
-| Arm | Model | Floop | Role |
-|-----|-------|-------|------|
-| `sonnet_bare` | Sonnet 4.5 | No | Performance ceiling |
-| `haiku_bare` | Haiku 4.5 | No | Performance floor |
-| `haiku_floop` | Haiku 4.5 | Yes | The treatment |
-
-The key metric is **gap closure**: how much of the Sonnet-Haiku performance gap does floop close?
-
-Dataset: 50 tasks sampled from [SWE-bench Verified](https://huggingface.co/datasets/princeton-nlp/SWE-bench_Verified), split into 30 train / 20 eval.
+The harness supports multiple experimental arms (model + agent + floop configuration), parallel execution, automatic resume, budget controls, and statistical analysis.
 
 ## Prerequisites
 
 - Python 3.12+
-- [uv](https://docs.astral.sh/uv/) package manager
-- Docker or Podman (for SWE-bench evaluation)
+- [uv](https://docs.astral.sh/uv/)
+- Docker or Podman
 - [floop](https://github.com/nvandessel/floop) CLI
-- An Anthropic API key
+- `ANTHROPIC_API_KEY` environment variable
 
-Optional (for the Claude Code agent):
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI
+Optional:
+- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI (for the `claude_code` agent)
 
 ## Setup
 
@@ -35,170 +25,140 @@ Optional (for the Claude Code agent):
 git clone git@github.com:nvandessel/floop-bench.git
 cd floop-bench
 uv sync
-```
-
-### API Key
-
-Set your Anthropic API key:
-
-```bash
 export ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-Add it to `~/.zshrc` or `~/.bashrc` to persist across sessions.
-
-### Validate
+Validate the environment:
 
 ```bash
 uv run python -m scripts.validate_harness
 ```
 
-All 8 checks should pass before running any experiments.
+All 8 checks should pass before running experiments.
 
-## Running the Experiment
+## Usage
 
-### Phase 1: Smoke Test (~$0.40)
+### Smoke test
 
-Validates the full pipeline with 2 tasks:
+Run 2 tasks end-to-end to validate the pipeline:
 
 ```bash
 uv run python -m harness.orchestrator --phase smoke
-```
-
-Then evaluate the patches:
-
-```bash
 uv run python -m harness.swebench_eval --arm haiku_bare --split smoke
 ```
 
-### Phase 2: Training (~$6)
+### Training phase
 
-Run Haiku bare on 30 training tasks to generate failure data:
+Run the baseline model on 30 training tasks, evaluate, then create floop behaviors from failure analysis:
 
 ```bash
 uv run python -m harness.orchestrator --phase train
 uv run python -m harness.swebench_eval --arm haiku_bare --split train
 ```
 
-Then analyze failures and create floop behaviors. See [docs/TRAINING.md](docs/TRAINING.md) for the full protocol.
-
-Audit for data leakage before proceeding:
+See [docs/TRAINING.md](docs/TRAINING.md) for the behavior creation protocol. Audit for data leakage before proceeding:
 
 ```bash
 uv run python -m scripts.check_leakage
 ```
 
-### Phase 3: Evaluation (~$30)
+### Evaluation phase
 
-Run all 3 arms on 20 eval tasks:
+Run all configured arms on 20 eval tasks:
 
 ```bash
 uv run python -m harness.orchestrator --phase eval
-```
-
-Evaluate each arm's patches:
-
-```bash
 uv run python -m harness.swebench_eval --arm sonnet_bare
 uv run python -m harness.swebench_eval --arm haiku_bare
 uv run python -m harness.swebench_eval --arm haiku_floop
 ```
 
-### Phase 4: Analysis (free)
+### Analysis
 
 ```bash
 uv run python -m analysis.analyze
 uv run python -m analysis.charts
 ```
 
-Charts are saved to `results/charts/`.
-
 ## CLI Reference
 
 ### Orchestrator
 
-```bash
+```
 uv run python -m harness.orchestrator --phase {smoke,train,eval} [OPTIONS]
 ```
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--phase` | required | Experiment phase |
-| `--budget` | 55.0 | Max total spend in USD — halts all workers when exceeded |
-| `--workers` | 1 | Parallel workers (each gets isolated repo worktrees) |
-| `--timeout` | 300 | Per-task timeout in seconds |
+| `--budget` | 55.0 | Max total spend (USD) before halting |
+| `--workers` | 1 | Number of parallel workers |
+| `--timeout` | 300 | Per-task timeout (seconds) |
 
-The orchestrator automatically **resumes** — re-running the same phase skips already-completed tasks.
+Re-running the same phase skips completed tasks automatically.
 
 ### SWE-bench Evaluation
 
-```bash
+```
 uv run python -m harness.swebench_eval --arm ARM [--split SPLIT] [--max-workers N]
 ```
 
 ### Utility Scripts
 
-| Script | What it does |
+| Script | Description |
 |--------|-------------|
-| `scripts.validate_harness` | Progressive checks — 8 must pass |
-| `scripts.generate_split` | Generate train/eval split (run once, already committed) |
+| `scripts.validate_harness` | Run 8 progressive environment checks |
+| `scripts.generate_split` | Generate train/eval split (already committed) |
 | `scripts.check_leakage` | Scan behavior store for eval data contamination |
 | `scripts.estimate_cost` | Project remaining cost from historical run data |
 
-## Cost Estimates
+## Configuration
 
-| Phase | Est. Cost |
-|-------|-----------|
-| Smoke (2 tasks, Haiku) | ~$0.40 |
-| Train (30 tasks, Haiku) | ~$6 |
-| Eval: haiku_bare (20 tasks) | ~$4 |
-| Eval: haiku_floop (20 tasks) | ~$5 |
-| Eval: sonnet_bare (20 tasks) | ~$20 |
-| Buffer | ~$10 |
-| **Total** | **~$45** |
+### Arms
 
-Control costs with `--budget`, resume support (re-run to skip completed tasks), and `MAX_THINKING_TOKENS=8000` (set automatically for the Claude Code agent).
+Arms are defined in `config/arms.toml`. Each arm specifies a model, an agent backend, and whether floop is enabled:
 
-Check live projections:
+```toml
+[arms.haiku_bare]
+agent = "mini_swe"
+model = "anthropic/claude-haiku-4-5-20251001"
+floop = false
 
-```bash
-uv run python -m scripts.estimate_cost
+[arms.haiku_floop]
+agent = "mini_swe"
+model = "anthropic/claude-haiku-4-5-20251001"
+floop = true
+floop_store = "behaviors/store"
 ```
 
-## Results
+### Agents
+
+Two agent backends are included:
+
+- **`mini_swe`** — Lightweight agent loop using [litellm](https://github.com/BerriAI/litellm). Works with any litellm-supported model.
+- **`claude_code`** — Wraps the [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI.
+
+New agents can be added by implementing the protocol in `agents/base.py` and registering in `harness/config.py`.
+
+### Dataset
+
+50 tasks sampled from [SWE-bench Verified](https://huggingface.co/datasets/princeton-nlp/SWE-bench_Verified) (seed 42), stratified by repo into 30 train / 20 eval. The split is committed at `config/splits.json`.
+
+## Output
 
 | Path | Contents |
 |------|----------|
 | `results/results.db` | SQLite database with all run data |
-| `results/predictions/` | JSONL files per arm (SWE-bench input format) |
+| `results/predictions/` | JSONL files per arm (SWE-bench format) |
 | `results/transcripts/` | Raw agent output per run |
-| `results/charts/` | Generated PNG/SVG visualizations |
+| `results/charts/` | Generated PNG/SVG charts |
 
-### Key Metrics
+## Cost Controls
 
-- **Resolve rate** — % of eval tasks where the patch passes tests
-- **Gap closure** — `(haiku_floop - haiku_bare) / (sonnet - haiku_bare)`
-- **McNemar's test** — paired comparison of floop vs bare outcomes
-- **Bootstrap 95% CIs** — on all rates and gap closure
-- **Cost per resolved task** — effective cost of each successful fix
-
-## Configuration
-
-Arms are defined in `config/arms.toml`. To change models, agents, or add arms:
-
-```toml
-[arms.my_custom_arm]
-agent = "mini_swe"          # or "claude_code"
-model = "anthropic/claude-haiku-4-5-20251001"
-floop = true
-floop_store = "behaviors/store"
-description = "My custom arm"
-```
-
-The `agent` field selects which agent backend to use. See `agents/base.py` for the protocol any agent must implement.
+The orchestrator tracks cumulative API spend and halts when `--budget` is exceeded. Interrupted runs resume automatically. Use `scripts.estimate_cost` for projections based on prior run data.
 
 ## Further Reading
 
+- [docs/TRAINING.md](docs/TRAINING.md) — Behavior creation protocol and leakage rules
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — Technical architecture and data flow
 - [SPEC.md](SPEC.md) — Full experimental design specification
-- [docs/TRAINING.md](docs/TRAINING.md) — Training phase protocol
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — Technical architecture reference
