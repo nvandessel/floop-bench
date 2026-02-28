@@ -11,7 +11,7 @@ expensive model on real software engineering tasks. Headline result:
 
 | Component | Choice | Why |
 |-----------|--------|-----|
-| **Benchmark** | SWE-bench Verified Mini (50 tasks) | Published subset, pre-validated, cheap to run |
+| **Benchmark** | SWE-bench Verified (50 sampled tasks) | Pre-validated by humans, 50 sampled from 500 for budget |
 | **Agent** | Claude Code CLI via `claude -p` | Native MCP support = native floop integration |
 | **Auth** | Anthropic API key (pay-per-token) | Precise cost tracking, no TOS gray area, no rate limits |
 | **Evaluation** | SWE-bench Docker harness | Gold-standard pass/fail, fully reproducible |
@@ -115,12 +115,12 @@ These can be added in a follow-up if initial results are promising.
 
 - **50 tasks**, random subset of SWE-bench Verified
 - Pre-validated by humans as solvable
-- Available on HuggingFace: `princeton-nlp/SWE-bench_Verified_Mini`
+- Available on HuggingFace: `princeton-nlp/SWE-bench_Verified`
 - Each task: issue description, base commit, repo, ground truth patch, test suite in Docker
 
 ```python
 from datasets import load_dataset
-ds = load_dataset("princeton-nlp/SWE-bench_Verified_Mini", split="test")
+ds = load_dataset("princeton-nlp/SWE-bench_Verified", split="test")
 print(f"{len(ds)} tasks loaded")
 ```
 
@@ -474,7 +474,7 @@ def evaluate_arm(arm_name: str):
 
     subprocess.run([
         "python", "-m", "swebench.harness.run_evaluation",
-        "--dataset_name", "princeton-nlp/SWE-bench_Verified_Mini",
+        "--dataset_name", "princeton-nlp/SWE-bench_Verified",
         "--predictions_path", predictions_path,
         "--max_workers", "4",
         "--run_id", f"{arm_name}_eval",
@@ -698,7 +698,7 @@ def c_docker():
 
 def c_dataset():
     from datasets import load_dataset
-    ds = load_dataset("princeton-nlp/SWE-bench_Verified_Mini", split="test")
+    ds = load_dataset("princeton-nlp/SWE-bench_Verified", split="test")
     return len(ds) > 0, f"Got {len(ds)} tasks"
 
 def c_split():
