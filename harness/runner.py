@@ -9,6 +9,7 @@ import logging
 import shutil
 import subprocess
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 from agents.base import Agent, RunResult
@@ -16,6 +17,22 @@ from floop_integration.inject import get_floop_context
 from harness.config import ArmConfig, create_agent
 
 logger = logging.getLogger(__name__)
+
+SANDBOX_IMAGE = "floop-sandbox"
+
+
+@dataclass
+class SandboxConfig:
+    """Configuration for Docker sandbox execution."""
+
+    enabled: bool = True
+    image: str = SANDBOX_IMAGE
+    floop_volume: str | None = None
+    floop_volume_readonly: bool = False
+    memory: str = "2g"
+    cpus: int = 2
+    pids_limit: int = 256
+    env_vars: list[str] | None = None
 
 
 def setup_repo(instance: dict, base_dir: Path) -> Path:
@@ -69,22 +86,141 @@ def cleanup_repo(task_dir: Path, base_dir: Path | None = None) -> None:
                 )
 
 
+def _run_sandboxed(
+    instance: dict,
+    arm: ArmConfig,
+    task_dir: Path,
+    sandbox: SandboxConfig,
+    timeout: int,
+) -> RunResult:
+    """Run agent inside a Docker container."""
+    cmd = [
+        "docker", "run", "--rm",
+        # Security: drop all capabilities, add only what's needed
+        "--cap-drop", "ALL",
+        "--cap-add", "CHOWN",
+        "--cap-add", "DAC_OVERRIDE",
+        "--cap-add", "FOWNER",
+        # Resource limits
+        f"--memory={sandbox.memory}",
+        f"--cpus={sandbox.cpus}",
+        f"--pids-limit={sandbox.pids_limit}",
+        # Bind mount worktree as /workspace
+        "-v", f"{task_dir.resolve()}:/workspace",
+    ]
+
+    # Floop volume mount
+    if sandbox.floop_volume:
+        mode = "ro" if sandbox.floop_volume_readonly else "rw"
+        cmd.extend(["-v", f"{sandbox.floop_volume}:/floop-store:{mode}"])
+
+    # Forward API key env vars from host
+    env_vars = sandbox.env_vars or [
+        "GEMINI_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "OPENAI_API_KEY",
+    ]
+    for var in env_vars:
+        cmd.extend(["-e", var])
+
+    # Stdin mode
+    cmd.append("-i")
+
+    # Image
+    cmd.append(sandbox.image)
+
+    # Build input JSON
+    input_data = {
+        "problem_statement": instance["problem_statement"],
+        "model": arm.model,
+        "timeout": timeout,
+        "floop_enabled": arm.floop,
+    }
+    if arm.floop and sandbox.floop_volume:
+        input_data["floop_store"] = "/floop-store"
+
+    logger.info(
+        "Running sandboxed: %s (model=%s, floop=%s)",
+        instance["instance_id"], arm.model, arm.floop,
+    )
+
+    try:
+        proc = subprocess.run(
+            cmd,
+            input=json.dumps(input_data),
+            capture_output=True,
+            text=True,
+            timeout=timeout + 60,  # extra margin for container startup
+        )
+    except subprocess.TimeoutExpired:
+        return RunResult(
+            instance_id="",
+            arm="",
+            model_patch="",
+            model=arm.model,
+            floop_enabled=arm.floop,
+            status="timeout",
+            duration_seconds=float(timeout),
+            input_tokens=0,
+            output_tokens=0,
+            cost_usd=0.0,
+            error_message="Docker container timed out",
+        )
+
+    if proc.stderr:
+        logger.debug("Container stderr: %s", proc.stderr[:2000])
+
+    if proc.returncode != 0:
+        return RunResult(
+            instance_id="",
+            arm="",
+            model_patch="",
+            model=arm.model,
+            floop_enabled=arm.floop,
+            status="error",
+            duration_seconds=0.0,
+            input_tokens=0,
+            output_tokens=0,
+            cost_usd=0.0,
+            error_message=f"Container exited {proc.returncode}: {proc.stderr[:500]}",
+        )
+
+    # Parse RunResult from stdout
+    try:
+        data = json.loads(proc.stdout)
+        return RunResult(**data)
+    except (json.JSONDecodeError, TypeError) as exc:
+        return RunResult(
+            instance_id="",
+            arm="",
+            model_patch="",
+            model=arm.model,
+            floop_enabled=arm.floop,
+            status="error",
+            duration_seconds=0.0,
+            input_tokens=0,
+            output_tokens=0,
+            cost_usd=0.0,
+            error_message=f"Failed to parse container output: {exc}. stdout: {proc.stdout[:500]}",
+        )
+
+
 def run_single_task(
     instance: dict,
     arm: ArmConfig,
     base_dir: Path,
     transcript_dir: Path,
     timeout: int = 300,
+    sandbox: SandboxConfig | None = None,
 ) -> RunResult:
     """
     Run one agent on one SWE-bench task.
 
     1. Checkout repo at base_commit
-    2. Build floop context if arm has floop enabled
-    3. Run agent
-    4. Capture git diff
-    5. Save transcript
-    6. Cleanup
+    2. Run agent (sandboxed or direct)
+    3. Capture git diff
+    4. Save transcript
+    5. Cleanup
     """
     instance_id = instance["instance_id"]
     task_dir = None
@@ -94,21 +230,24 @@ def run_single_task(
         # Setup repo
         task_dir = setup_repo(instance, base_dir)
 
-        # Build floop context
-        floop_context = None
-        if arm.floop and arm.floop_store:
-            floop_context = get_floop_context(
-                Path(arm.floop_store), task_type="bug-fix"
-            )
+        if sandbox and sandbox.enabled:
+            # Sandboxed execution via Docker
+            result = _run_sandboxed(instance, arm, task_dir, sandbox, timeout)
+        else:
+            # Direct execution (no sandbox)
+            floop_context = None
+            if arm.floop and arm.floop_store:
+                floop_context = get_floop_context(
+                    Path(arm.floop_store), task_type="bug-fix"
+                )
 
-        # Create agent and run
-        agent = create_agent(arm)
-        result = agent.run(
-            problem_statement=instance["problem_statement"],
-            repo_dir=task_dir,
-            floop_context=floop_context,
-            timeout=timeout,
-        )
+            agent = create_agent(arm)
+            result = agent.run(
+                problem_statement=instance["problem_statement"],
+                repo_dir=task_dir,
+                floop_context=floop_context,
+                timeout=timeout,
+            )
 
         # Fill in instance and arm info
         result.instance_id = instance_id

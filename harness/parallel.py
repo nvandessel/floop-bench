@@ -21,7 +21,7 @@ from pathlib import Path
 from agents.base import RunResult
 from harness.config import ArmConfig
 from harness.db import get_total_cost, save_run
-from harness.runner import append_prediction, run_single_task
+from harness.runner import SandboxConfig, append_prediction, run_single_task
 
 
 def _worker_task(
@@ -31,9 +31,12 @@ def _worker_task(
     transcript_dir: Path,
     prediction_dir: Path,
     timeout: int,
+    sandbox: SandboxConfig | None = None,
 ) -> RunResult:
     """Run a single task in a worker process."""
-    result = run_single_task(instance, arm, base_dir, transcript_dir, timeout)
+    result = run_single_task(
+        instance, arm, base_dir, transcript_dir, timeout, sandbox=sandbox,
+    )
     save_run(result)
     append_prediction(result, prediction_dir / f"{arm.name}.jsonl")
     return result
@@ -48,6 +51,7 @@ def run_parallel(
     budget: float = 55.0,
     timeout: int = 300,
     on_complete=None,
+    sandbox: SandboxConfig | None = None,
 ) -> list[RunResult]:
     """
     Run task queue across N parallel workers.
@@ -61,6 +65,7 @@ def run_parallel(
         budget: Maximum total cost before stopping
         timeout: Per-task timeout in seconds
         on_complete: Optional callback(result, index, total) for progress
+        sandbox: Optional sandbox configuration for Docker execution
 
     Returns:
         List of RunResults
@@ -76,7 +81,7 @@ def run_parallel(
                 break
             result = _worker_task(
                 instance, arm, base_dir, transcript_dir,
-                prediction_dir, timeout,
+                prediction_dir, timeout, sandbox=sandbox,
             )
             results.append(result)
             if on_complete:
@@ -94,7 +99,7 @@ def run_parallel(
             future = executor.submit(
                 _worker_task,
                 instance, arm, base_dir, transcript_dir,
-                prediction_dir, timeout,
+                prediction_dir, timeout, sandbox,
             )
             futures[future] = i
 

@@ -8,14 +8,19 @@ Scans every behavior for:
 
 Usage:
     uv run python -m scripts.check_leakage
+    uv run python -m scripts.check_leakage --volume floop-train
+    uv run python -m scripts.check_leakage --store-path /path/to/store
 """
 
 from __future__ import annotations
 
 import json
-import re
+import subprocess
+import sys
+import tempfile
 from pathlib import Path
 
+import click
 from datasets import load_dataset
 
 from floop_integration.cli import get_active_behaviors
@@ -45,31 +50,32 @@ def load_eval_patches() -> dict[str, str]:
     return patches
 
 
-def check_leakage():
-    """Check behavior store for eval data leakage."""
-    eval_ids = load_eval_ids()
-    if not eval_ids:
-        print("No eval IDs found.")
-        return
+def _get_behaviors_from_volume(volume_name: str) -> list[dict]:
+    """Extract behaviors from a Docker volume by mounting it temporarily."""
+    try:
+        result = subprocess.run(
+            [
+                "docker", "run", "--rm",
+                "-v", f"{volume_name}:/floop-store:ro",
+                "floop-sandbox",
+                "floop", "active", "--json", "--root", "/floop-store",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode != 0:
+            print(f"Failed to read from volume {volume_name}: {result.stderr}")
+            return []
+        data = json.loads(result.stdout)
+        return data.get("active", data.get("behaviors", []))
+    except (subprocess.TimeoutExpired, json.JSONDecodeError, FileNotFoundError) as exc:
+        print(f"Error reading volume {volume_name}: {exc}")
+        return []
 
-    eval_patches = load_eval_patches()
-    print(f"Checking {len(eval_ids)} eval task IDs for leakage...")
 
-    # Read store path from arms config (resolves relative paths)
-    from harness.config import load_arms
-
-    arms = load_arms()
-    floop_arms = [a for a in arms.values() if a.floop and a.floop_store]
-    if not floop_arms:
-        print("No floop-enabled arms configured.")
-        return
-    store_path = Path(floop_arms[0].floop_store)
-    behaviors = get_active_behaviors(store_path)
-
-    if not behaviors:
-        print("No behaviors in store (or floop not initialized).")
-        return
-
+def scan_behaviors(behaviors: list[dict], eval_ids: list[str], eval_patches: dict[str, str]) -> int:
+    """Scan behaviors for leakage. Returns number of leaks found."""
     print(f"Scanning {len(behaviors)} behaviors...")
 
     leaks_found = 0
@@ -95,10 +101,50 @@ def check_leakage():
                         )
                         leaks_found += 1
 
+    return leaks_found
+
+
+@click.command()
+@click.option("--volume", default=None, help="Docker volume name to scan (e.g. floop-train)")
+@click.option("--store-path", default=None, type=click.Path(), help="Host path to floop store")
+def check_leakage(volume: str | None, store_path: str | None) -> None:
+    """Check behavior store for eval data leakage."""
+    eval_ids = load_eval_ids()
+    if not eval_ids:
+        print("No eval IDs found.")
+        sys.exit(0)
+
+    eval_patches = load_eval_patches()
+    print(f"Checking {len(eval_ids)} eval task IDs for leakage...")
+
+    # Get behaviors from the appropriate source
+    if volume:
+        behaviors = _get_behaviors_from_volume(volume)
+    elif store_path:
+        behaviors = get_active_behaviors(Path(store_path))
+    else:
+        # Fall back to arms config
+        from harness.config import load_arms
+
+        arms = load_arms()
+        floop_arms = [a for a in arms.values() if a.floop and a.floop_store]
+        if not floop_arms:
+            print("No floop-enabled arms configured.")
+            sys.exit(0)
+        behaviors = get_active_behaviors(Path(floop_arms[0].floop_store))
+
+    if not behaviors:
+        print("No behaviors in store (or floop not initialized).")
+        sys.exit(0)
+
+    leaks_found = scan_behaviors(behaviors, eval_ids, eval_patches)
+
     if leaks_found == 0:
         print("No leakage detected.")
+        sys.exit(0)
     else:
         print(f"\n{leaks_found} potential leak(s) found. Review and fix before eval.")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

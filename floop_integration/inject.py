@@ -6,40 +6,77 @@ from pathlib import Path
 
 from floop_integration.cli import get_active_behaviors
 
+FLOOP_CLI_CADENCE = """\
+## Floop — Learning & Recall System
 
-def build_floop_preamble(behaviors: list[dict]) -> str:
+You have access to `floop`, a tool that helps you learn from experience and recall relevant knowledge.
+
+### At task start
+Query for relevant behaviors before you begin work:
+```bash
+floop active --task bug-fix --json
+```
+Review the output and apply any relevant learned behaviors to your approach.
+
+### When you learn something
+When you discover an insight, a pattern, or correct a mistake, capture it:
+```bash
+floop learn --right "Always check for None before accessing .attribute in Django querysets" --wrong "Assumed queryset result was non-None without checking" --task bug-fix
+```
+
+### When to learn
+- You found a non-obvious root cause
+- You corrected an initial wrong approach
+- You discovered a repo-specific pattern or convention
+- You found a debugging technique that worked well
+
+### Important
+- Keep learned behaviors concise and generalizable (not instance-specific)
+- Do NOT include specific file paths, variable names, or test cases from this task
+- Focus on the transferable insight, not the specific fix"""
+
+
+def build_floop_preamble(
+    behaviors: list[dict], include_cadence: bool = True
+) -> str:
     """
     Convert active behaviors into a text preamble for agent prompt injection.
 
     Args:
         behaviors: List of behavior dicts from floop CLI
+        include_cadence: Whether to include floop CLI usage instructions
 
     Returns:
         Formatted preamble string to prepend to agent prompts
     """
-    if not behaviors:
-        return ""
+    parts = []
 
-    lines = [
-        "## Learned Behaviors\n",
-        "Apply these learned behaviors when relevant:\n",
-    ]
+    if include_cadence:
+        parts.append(FLOOP_CLI_CADENCE)
 
-    for b in behaviors:
-        kind = b.get("kind", b.get("type", "behavior"))
-        content = b.get("content", {})
-        if isinstance(content, dict):
-            text = content.get(
-                "canonical", content.get("description", str(content))
-            )
-        else:
-            text = str(content)
+    if behaviors:
+        lines = [
+            "## Learned Behaviors\n",
+            "Apply these learned behaviors when relevant:\n",
+        ]
 
-        tags = b.get("tags", [])
-        tag_str = f" [{', '.join(tags)}]" if tags else ""
-        lines.append(f"- [{kind}]{tag_str} {text}")
+        for b in behaviors:
+            kind = b.get("kind", b.get("type", "behavior"))
+            content = b.get("content", {})
+            if isinstance(content, dict):
+                text = content.get(
+                    "canonical", content.get("description", str(content))
+                )
+            else:
+                text = str(content)
 
-    return "\n".join(lines)
+            tags = b.get("tags", [])
+            tag_str = f" [{', '.join(tags)}]" if tags else ""
+            lines.append(f"- [{kind}]{tag_str} {text}")
+
+        parts.append("\n".join(lines))
+
+    return "\n\n".join(parts)
 
 
 def get_floop_context(
@@ -48,10 +85,8 @@ def get_floop_context(
     """
     Get floop context for prompt injection.
 
-    Returns empty string if floop enabled but no active behaviors.
+    Returns preamble with CLI cadence + any active behaviors.
     Returns None only if called with no store (should not happen for floop arms).
     """
     behaviors = get_active_behaviors(store_path, task_type=task_type)
-    if not behaviors:
-        return ""
-    return build_floop_preamble(behaviors)
+    return build_floop_preamble(behaviors, include_cadence=True)

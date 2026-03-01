@@ -2,8 +2,8 @@
 Orchestrator: main entry point for running floop-bench experiments.
 
 Modes:
-  --phase smoke     2 tasks, haiku_bare only (validate harness)
-  --phase train     30 train tasks, haiku_bare only (generate training data)
+  --phase smoke     2 tasks, 1 arm (validate harness)
+  --phase train     30 train tasks, floor arm only (generate training data)
   --phase eval      20 eval tasks x 3 arms (the actual experiment)
 
 Features:
@@ -11,14 +11,19 @@ Features:
   - Shuffled queue: interleaves tasks and arms to avoid ordering bias
   - Live progress: prints running pass rate per arm
   - Cost guard: halts if cumulative spend exceeds --budget
+  - Docker sandbox: runs agents in isolated containers (default ON)
 
 Usage:
     uv run python -m harness.orchestrator --phase smoke
+    uv run python -m harness.orchestrator --phase smoke --arm gemini_flash_bare
+    uv run python -m harness.orchestrator --phase smoke --no-sandbox
 """
 
 from __future__ import annotations
 
 import random
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -36,7 +41,12 @@ from harness.db import (
     save_run,
 )
 from harness.parallel import run_parallel
-from harness.runner import append_prediction, run_single_task
+from harness.runner import (
+    SANDBOX_IMAGE,
+    SandboxConfig,
+    append_prediction,
+    run_single_task,
+)
 
 console = Console()
 
@@ -103,6 +113,178 @@ def print_summary() -> None:
     console.print(f"Total spend: ${get_total_cost():.2f}")
 
 
+# ---------------------------------------------------------------------------
+# Docker helpers
+# ---------------------------------------------------------------------------
+
+def _docker_available() -> bool:
+    """Check if Docker daemon is reachable."""
+    try:
+        result = subprocess.run(
+            ["docker", "info"],
+            capture_output=True,
+            timeout=10,
+        )
+        return result.returncode == 0
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return False
+
+
+def _image_exists(image: str = SANDBOX_IMAGE) -> bool:
+    """Check if the sandbox Docker image exists locally."""
+    try:
+        result = subprocess.run(
+            ["docker", "image", "inspect", image],
+            capture_output=True,
+            timeout=10,
+        )
+        return result.returncode == 0
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return False
+
+
+def _build_image(image: str = SANDBOX_IMAGE) -> bool:
+    """Build the sandbox Docker image from the project Dockerfile."""
+    console.print(f"[cyan]Building sandbox image '{image}'...[/cyan]")
+    try:
+        result = subprocess.run(
+            ["docker", "build", "-t", image, "."],
+            timeout=600,
+        )
+        if result.returncode == 0:
+            console.print(f"[green]Image '{image}' built successfully.[/green]")
+            return True
+        else:
+            console.print(f"[red]Failed to build image '{image}'.[/red]")
+            return False
+    except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
+        console.print(f"[red]Failed to build image: {exc}[/red]")
+        return False
+
+
+def _ensure_volume(name: str) -> bool:
+    """Create a Docker volume if it doesn't exist."""
+    try:
+        result = subprocess.run(
+            ["docker", "volume", "create", name],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        return result.returncode == 0
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return False
+
+
+def _init_floop_in_volume(volume_name: str, image: str = SANDBOX_IMAGE) -> bool:
+    """Run `floop init` inside a temporary container with the volume mounted."""
+    try:
+        result = subprocess.run(
+            [
+                "docker", "run", "--rm",
+                "-v", f"{volume_name}:/floop-store",
+                image,
+                "floop", "init", "--root", "/floop-store",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        return result.returncode == 0
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return False
+
+
+def _run_leakage_audit(volume_name: str) -> bool:
+    """Run leakage audit against a Docker volume. Returns True if clean."""
+    console.print(f"[cyan]Running leakage audit on volume '{volume_name}'...[/cyan]")
+    try:
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "scripts.check_leakage",
+                "--volume", volume_name,
+            ],
+            timeout=120,
+        )
+        if result.returncode == 0:
+            console.print("[green]Leakage audit passed.[/green]")
+            return True
+        else:
+            console.print("[red]Leakage audit FAILED. Eval blocked.[/red]")
+            return False
+    except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
+        console.print(f"[red]Leakage audit error: {exc}[/red]")
+        return False
+
+
+def _setup_sandbox(
+    phase: str,
+    active_arms: list[ArmConfig],
+    no_sandbox: bool,
+) -> SandboxConfig | None:
+    """
+    Set up Docker sandbox configuration.
+
+    Returns SandboxConfig if sandbox is enabled, None otherwise.
+    Handles Docker availability check, image build, and volume lifecycle.
+    """
+    if no_sandbox:
+        console.print("[yellow]Sandbox: disabled (--no-sandbox)[/yellow]")
+        return None
+
+    if not _docker_available():
+        console.print(
+            "[yellow]Sandbox: disabled (Docker not available). "
+            "Install Docker or use --no-sandbox.[/yellow]"
+        )
+        return None
+
+    # Auto-build image if missing
+    if not _image_exists():
+        if not _build_image():
+            console.print(
+                "[yellow]Sandbox: disabled (image build failed). "
+                "Fix Dockerfile or use --no-sandbox.[/yellow]"
+            )
+            return None
+
+    # Determine if any active arm uses floop
+    has_floop = any(arm.floop for arm in active_arms)
+
+    floop_volume = None
+    floop_readonly = False
+
+    if has_floop:
+        volume_name = f"floop-{phase}"
+        if not _ensure_volume(volume_name):
+            console.print(f"[red]Failed to create Docker volume '{volume_name}'[/red]")
+            return None
+
+        if phase == "train" or phase == "smoke":
+            # Initialize floop store in the volume
+            _init_floop_in_volume(volume_name)
+            floop_volume = volume_name
+            floop_readonly = False
+        elif phase == "eval":
+            # Run leakage audit before allowing eval
+            train_volume = "floop-train"
+            if not _run_leakage_audit(train_volume):
+                sys.exit("Eval aborted: leakage audit failed.")
+            floop_volume = train_volume
+            floop_readonly = True
+
+    console.print(
+        f"[green]Sandbox: enabled (Docker)[/green]"
+        + (f" | Volume: {floop_volume} ({'ro' if floop_readonly else 'rw'})" if floop_volume else "")
+    )
+
+    return SandboxConfig(
+        enabled=True,
+        floop_volume=floop_volume,
+        floop_volume_readonly=floop_readonly,
+    )
+
+
 @click.command()
 @click.option(
     "--phase",
@@ -113,7 +295,9 @@ def print_summary() -> None:
 @click.option("--budget", default=55.0, help="Maximum total cost in USD")
 @click.option("--workers", default=1, help="Number of parallel workers")
 @click.option("--timeout", default=300, help="Per-task timeout in seconds")
-def main(phase: str, budget: float, workers: int, timeout: int):
+@click.option("--arm", "arm_names", multiple=True, help="Arm(s) to run (repeatable). Defaults depend on phase.")
+@click.option("--no-sandbox", is_flag=True, default=False, help="Disable Docker sandbox (run agents directly on host)")
+def main(phase: str, budget: float, workers: int, timeout: int, arm_names: tuple[str, ...], no_sandbox: bool):
     """Run floop-bench experiments."""
     init_db()
 
@@ -125,18 +309,31 @@ def main(phase: str, budget: float, workers: int, timeout: int):
     split = load_split()
     dataset = load_dataset_lookup()
 
+    # Resolve --arm overrides
+    if arm_names:
+        for name in arm_names:
+            if name not in arms:
+                sys.exit(f"Unknown arm: {name}. Available: {list(arms.keys())}")
+        selected_arms = [arms[name] for name in arm_names]
+    else:
+        selected_arms = None  # use phase defaults
+
     # Select tasks and arms for this phase
+    all_arm_names = list(arms.keys())
     if phase == "smoke":
         task_ids = split["train"][:2]
-        active_arms = [arms["haiku_bare"]]
+        active_arms = selected_arms or [arms[all_arm_names[0]]]
     elif phase == "train":
         task_ids = split["train"]
-        active_arms = [arms["haiku_bare"]]
+        active_arms = selected_arms or [arms[all_arm_names[0]]]
     elif phase == "eval":
         task_ids = split["eval"]
-        active_arms = [arms["sonnet_bare"], arms["haiku_bare"], arms["haiku_floop"]]
+        active_arms = selected_arms or [arms[a] for a in all_arm_names]
     else:
         sys.exit(f"Unknown phase: {phase}")
+
+    # Setup sandbox
+    sandbox = _setup_sandbox(phase, active_arms, no_sandbox)
 
     # Build queue
     completed = load_completed()
@@ -169,7 +366,7 @@ def main(phase: str, budget: float, workers: int, timeout: int):
         results = run_parallel(
             instance_queue, BASE_DIR, TRANSCRIPT_DIR, PREDICTION_DIR,
             workers=workers, budget=budget, timeout=timeout,
-            on_complete=on_complete,
+            on_complete=on_complete, sandbox=sandbox,
         )
     else:
         # Sequential
@@ -184,6 +381,7 @@ def main(phase: str, budget: float, workers: int, timeout: int):
 
             result = run_single_task(
                 instance, arm, BASE_DIR, TRANSCRIPT_DIR, timeout,
+                sandbox=sandbox,
             )
             save_run(result)
             append_prediction(result, PREDICTION_DIR / f"{arm.name}.jsonl")
