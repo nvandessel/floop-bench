@@ -15,7 +15,9 @@ RUN curl -fsSL "https://github.com/nvandessel/floop/releases/download/v${FLOOP_V
 # Python tooling (uv for fast installs)
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-# Project dependencies — install before copying code for layer caching
+# Project root is /app — deps, agent code, and venv all live here
+WORKDIR /app
+
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev
 
@@ -23,7 +25,4 @@ RUN uv sync --frozen --no-dev
 COPY agents/ /app/agents/
 COPY floop_integration/ /app/floop_integration/
 
-ENV PYTHONPATH=/app
-
-WORKDIR /workspace
 ENTRYPOINT ["uv", "run", "python", "-m", "agents.mini_swe_cli"]
