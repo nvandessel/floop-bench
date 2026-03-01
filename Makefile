@@ -50,9 +50,10 @@ eval: build ## Run eval phase (20 tasks, sandboxed, leakage audit auto-runs)
 leakage: ## Run leakage audit against train volume
 	uv run python -m scripts.check_leakage --volume floop-train
 
-reset: ## Clear results DB, predictions, transcripts, and floop volumes
+reset: ## Clear results, worktrees, and floop volumes
 	rm -f results/results.db
 	rm -rf results/predictions results/transcripts
+	rm -rf work/worktrees
 	-$(CONTAINER_RT) volume rm floop-smoke floop-train floop-eval 2>/dev/null
 
 clean: reset ## Reset + remove sandbox image

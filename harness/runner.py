@@ -51,7 +51,7 @@ def setup_repo(instance: dict, base_dir: Path) -> Path:
     Uses bare clone + worktree for fast, isolated checkouts.
     """
     repo_slug = instance["repo"].replace("/", "__")
-    bare_path = base_dir / "repos" / repo_slug
+    bare_path = (base_dir / "repos" / repo_slug).resolve()
 
     if not bare_path.exists():
         bare_path.parent.mkdir(parents=True, exist_ok=True)
@@ -65,9 +65,15 @@ def setup_repo(instance: dict, base_dir: Path) -> Path:
             capture_output=True,
         )
 
-    task_dir = base_dir / "worktrees" / instance["instance_id"]
+    task_dir = (base_dir / "worktrees" / instance["instance_id"]).resolve()
     if task_dir.exists():
         shutil.rmtree(task_dir)
+
+    # Prune stale worktree references before adding
+    subprocess.run(
+        ["git", "-C", str(bare_path), "worktree", "prune"],
+        capture_output=True,
+    )
 
     task_dir.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run(
