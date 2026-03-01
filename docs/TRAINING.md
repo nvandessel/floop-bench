@@ -1,18 +1,24 @@
 # Training Phase Protocol
 
-The training phase uses 30 held-out tasks to build floop behaviors. These behaviors are then injected into floop-enabled arms during evaluation.
+The training phase uses 30 held-out tasks to build floop behaviors. The agent uses floop organically during execution — learning behaviors as it works and querying them at task start. These behaviors accumulate in a Docker volume and are frozen (read-only) for evaluation.
 
-The key constraint is **no data leakage** — behaviors must encode general principles, not task-specific fixes.
+The key constraint is **no data leakage** — behaviors must encode general principles, not task-specific fixes. The agent is instructed to keep learnings generalizable via the floop CLI cadence prompt (see `floop_integration/inject.py`).
 
 ## Steps
 
-### 1. Run baseline on training tasks
+### 1. Run floop arm on training tasks
 
 ```bash
-uv run python -m harness.orchestrator --phase train
+make train
+# or: make train ARM=gemini_flash_floop
 ```
 
-Produces transcripts in `results/transcripts/` and patches in `results/predictions/haiku_bare.jsonl`.
+The agent runs inside a sandboxed container with the `floop-train` Docker volume mounted read-write. As it works through tasks, it:
+- Queries existing behaviors at task start (`floop active`)
+- Learns new behaviors when it discovers insights (`floop learn`)
+- Knowledge accumulates across all 30 tasks in the volume
+
+Produces transcripts in `results/transcripts/` and patches in `results/predictions/`.
 
 ### 2. Evaluate patches
 
@@ -22,16 +28,17 @@ uv run python -m harness.swebench_eval --arm haiku_bare --split train
 
 Runs SWE-bench Docker evaluation and marks each task as resolved or unresolved in the database.
 
-### 3. Analyze failures and create behaviors
+### 3. Review agent-created behaviors
 
-For each failed task:
+The agent creates behaviors organically during training. Review them for quality:
 
-1. Read the transcript — what did the agent try? Where did it go wrong?
-2. Read the ground truth patch — what was the actual fix?
-3. Identify whether a general principle would have helped.
-4. If yes, create a behavior.
+```bash
+make shell
+# inside container:
+floop active --root /floop-store --json | jq .
+```
 
-#### Good behaviors
+#### Good behaviors (agent should produce these)
 
 Generalizable principles that apply across multiple tasks:
 
@@ -50,33 +57,27 @@ These would contaminate the evaluation:
 
 **Rule of thumb:** if it only helps with one task, it's leakage. If it helps with a class of tasks, it's a valid behavior.
 
-#### Creating behaviors
-
-```bash
-floop learn \
-  --right "Django ORM: when a QuerySet method chains, verify it returns a new QuerySet rather than mutating in place" \
-  --tags "python,django,queryset,orm"
-```
-
-Not every failure needs a behavior. Focus on patterns that repeat across multiple failures.
+The floop cadence prompt instructs the agent to keep learnings generalizable, but review is still important.
 
 ### 4. Leakage audit
 
 ```bash
-uv run python -m scripts.check_leakage
+make leakage
+# or: uv run python -m scripts.check_leakage --volume floop-train
 ```
 
-Scans every behavior for:
+Scans every behavior in the Docker volume for:
 
 - Instance IDs from the eval split
 - File paths or function names unique to eval tasks
 - Literal code snippets matching eval ground truth patches
 
-Do not proceed to the eval phase with any leakage warnings.
+The leakage audit runs automatically before `make eval` — eval is blocked if leaks are found.
 
 ## Tips
 
-- Start with failures where the agent got closest — a small nudge is most likely to help there.
-- Group failures by repo and look for patterns. Multiple similar failures should become one behavior, not many.
-- Read the ground truth diff, not the full file. Focus on what changed and why.
+- The agent learns organically during training — you don't need to manually create every behavior.
+- Review agent-created behaviors after training. Prune any that are too task-specific.
+- Group failures by repo and look for patterns. If the agent missed a pattern, you can manually add it via `make shell`.
 - Keep behaviors concise. One principle per behavior.
+- `make clean` resets all volumes for a fresh training run.

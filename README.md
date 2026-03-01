@@ -13,11 +13,9 @@ The harness supports multiple experimental arms (model + agent + floop configura
 - Python 3.12+
 - [uv](https://docs.astral.sh/uv/)
 - Docker or Podman
-- [floop](https://github.com/nvandessel/floop) CLI
 - An API key for at least one model provider (see below)
 
-Optional:
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI (for the `claude_code` agent)
+All other dependencies (floop CLI, litellm, agent code) are packaged in the sandbox container image, built via `make build`.
 
 ## Setup
 
@@ -25,6 +23,9 @@ Optional:
 git clone git@github.com:nvandessel/floop-bench.git
 cd floop-bench
 uv sync
+
+# Build the sandbox image (agents run inside this container)
+make build
 ```
 
 ### API Keys
@@ -65,34 +66,35 @@ All checks should pass before running experiments.
 Run 2 tasks end-to-end to validate the pipeline:
 
 ```bash
-uv run python -m harness.orchestrator --phase smoke
-uv run python -m harness.swebench_eval --arm haiku_bare --split smoke
+make smoke
+# or with a specific arm:
+make smoke ARM=gemini_flash_bare
 ```
 
 ### Training phase
 
-Run the baseline model on 30 training tasks, evaluate, then create floop behaviors from failure analysis:
+Run the baseline model on 30 training tasks. The agent uses floop organically during execution — learning behaviors as it works through tasks:
 
 ```bash
-uv run python -m harness.orchestrator --phase train
-uv run python -m harness.swebench_eval --arm haiku_bare --split train
+make train
 ```
 
-See [docs/TRAINING.md](docs/TRAINING.md) for the behavior creation protocol. Audit for data leakage before proceeding:
-
-```bash
-uv run python -m scripts.check_leakage
-```
+Behaviors accumulate in a Docker volume (`floop-train`) across all 30 tasks. See [docs/TRAINING.md](docs/TRAINING.md) for details.
 
 ### Evaluation phase
 
-Run all configured arms on 20 eval tasks:
+Run all configured arms on 20 eval tasks. A leakage audit runs automatically before eval proceeds:
 
 ```bash
-uv run python -m harness.orchestrator --phase eval
-uv run python -m harness.swebench_eval --arm sonnet_bare
-uv run python -m harness.swebench_eval --arm haiku_bare
-uv run python -m harness.swebench_eval --arm haiku_floop
+make eval
+```
+
+The train-phase floop volume is mounted read-only — the agent can query learned behaviors but cannot learn new ones.
+
+### Manual leakage audit
+
+```bash
+make leakage
 ```
 
 ### Analysis
@@ -104,7 +106,21 @@ uv run python -m analysis.charts
 
 ## CLI Reference
 
-### Orchestrator
+### Make targets
+
+| Target | Description |
+|--------|-------------|
+| `make build` | Build the sandbox container image |
+| `make shell` | Interactive bash inside the sandbox |
+| `make smoke` | Smoke test (2 tasks, sandboxed) |
+| `make train` | Train phase (30 tasks, sandboxed) |
+| `make eval` | Eval phase (20 tasks, leakage audit + sandboxed) |
+| `make leakage` | Manual leakage audit against train volume |
+| `make clean` | Remove volumes and sandbox image |
+
+Override defaults with env-style args: `make smoke ARM=gemini_flash_bare TIMEOUT=600 BUDGET=10`
+
+### Orchestrator (direct)
 
 ```
 uv run python -m harness.orchestrator --phase {smoke,train,eval} [OPTIONS]
@@ -116,6 +132,7 @@ uv run python -m harness.orchestrator --phase {smoke,train,eval} [OPTIONS]
 | `--budget` | 55.0 | Max total spend (USD) before halting |
 | `--workers` | 1 | Number of parallel workers |
 | `--timeout` | 300 | Per-task timeout (seconds) |
+| `--no-sandbox` | off | Disable Docker sandbox (run agents directly on host) |
 
 Re-running the same phase skips completed tasks automatically.
 
@@ -131,7 +148,7 @@ uv run python -m harness.swebench_eval --arm ARM [--split SPLIT] [--max-workers 
 |--------|-------------|
 | `scripts.validate_harness` | Run 8 progressive environment checks |
 | `scripts.generate_split` | Generate train/eval split (already committed) |
-| `scripts.check_leakage` | Scan behavior store for eval data contamination |
+| `scripts.check_leakage` | Scan behavior store for eval data contamination (`--volume` for Docker volumes) |
 | `scripts.estimate_cost` | Project remaining cost from historical run data |
 
 ## Configuration

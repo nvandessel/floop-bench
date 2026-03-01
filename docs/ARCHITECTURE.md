@@ -8,15 +8,19 @@ SWE-bench Verified (500 tasks)
     ▼ sample 50, split 30/20
 config/splits.json
     │
-    ▼ orchestrator builds queue
+    ▼ orchestrator builds queue + sets up sandbox
 harness/orchestrator.py
     │
     ▼ for each (task, arm):
 harness/runner.py
-    ├── git clone --bare → git worktree add
-    ├── floop_integration/ → build prompt preamble (floop arms only)
-    ├── agents/ → run agent in worktree
-    └── git diff → capture patch
+    ├── git clone --bare → git worktree add (host)
+    ├── docker run --rm (sandbox)
+    │   ├── bind mount worktree → /workspace
+    │   ├── floop volume → /floop-store (rw train, ro eval)
+    │   ├── agents/mini_swe_cli.py (entrypoint, JSON stdin/stdout)
+    │   ├── agent loop (litellm API calls + bash, sandboxed)
+    │   └── agent calls floop learn/active organically
+    └── git diff on bind mount (host) → capture patch
     │
     ▼ save
 harness/db.py → SQLite (WAL mode)
@@ -42,9 +46,9 @@ analysis/charts.py → PNG/SVG
 |------|------|
 | `config.py` | Loads `arms.toml` and `splits.json`. Agent registry (lazy-loaded). |
 | `db.py` | SQLite with WAL mode. Context-managed connections. PK is `(instance_id, arm)`. |
-| `runner.py` | Repo checkout (bare clone + worktree), agent dispatch, diff capture, cleanup. |
-| `orchestrator.py` | Click CLI. Phase dispatch, queue building, resume, budget guard. |
-| `parallel.py` | ProcessPoolExecutor wrapper. Cost guard per task submission. |
+| `runner.py` | Repo checkout (bare clone + worktree), agent dispatch (sandboxed or direct), diff capture, cleanup. `SandboxConfig` dataclass. |
+| `orchestrator.py` | Click CLI. Phase dispatch, queue building, resume, budget guard. Docker sandbox lifecycle (image build, volume create/init, leakage audit). |
+| `parallel.py` | ProcessPoolExecutor wrapper. Cost guard per task submission. Threads `SandboxConfig`. |
 | `swebench_eval.py` | Subprocess call to `swebench.harness.run_evaluation`. Imports results. |
 
 ### agents/
@@ -53,13 +57,14 @@ analysis/charts.py → PNG/SVG
 |------|------|
 | `base.py` | `RunResult` dataclass and `Agent` protocol (`name` + `run()`). |
 | `mini_swe.py` | Litellm agent loop. Extracts bash blocks, executes, feeds output back. Stops on SUBMIT or step limit. |
+| `mini_swe_cli.py` | Docker entrypoint. Reads JSON from stdin, runs `MiniSweAgent`, prints `RunResult` JSON to stdout. |
 | `claude_code.py` | Claude Code CLI wrapper (`claude -p`). Uses `--allowedTools` to control floop access. |
 
 ### floop_integration/
 
 Two integration paths depending on agent:
 
-- **mini_swe**: `cli.py` calls `floop active --json`, `inject.py` formats behaviors as a text preamble prepended to the prompt.
+- **mini_swe**: `inject.py` builds a prompt preamble with CLI cadence instructions (`floop active`, `floop learn`) and any existing behaviors. The agent uses floop organically via bash commands inside the sandbox.
 - **claude_code**: Floop is accessed via MCP tools. `--allowedTools` includes/excludes floop tool names per arm.
 
 ### analysis/
@@ -94,6 +99,33 @@ CREATE TABLE runs (
 ## Resume
 
 The orchestrator is safe to interrupt and re-run. `load_completed()` returns all `(instance_id, arm)` pairs with status `completed`, `timeout`, or `error`, and the queue skips them. `save_run()` uses `INSERT ... ON CONFLICT ... DO UPDATE` with `COALESCE` to preserve existing `resolved` values.
+
+## Docker Sandbox
+
+Agents run inside disposable Docker containers (one per task). This prevents agent-executed bash commands from affecting the host.
+
+```
+Host                              Container (fresh per task, --rm)
+────                              ─────────────────────────────────
+git worktree setup
+  bind mount ──────────────→      /workspace (repo files)
+  Docker volume ───────────→      /floop-store (persistent within phase)
+  env vars (API keys) ────→      GEMINI_API_KEY, etc.
+  stdin (JSON) ────────────→      agents/mini_swe_cli.py
+                                  agent loop + bash (sandboxed)
+                                  floop learn/active via bash
+  ←── stdout (JSON) ───────      RunResult
+git diff (host, on bind mount)
+```
+
+**Security (beebox pattern):** `--cap-drop ALL`, minimal adds (CHOWN, DAC_OVERRIDE, FOWNER), resource limits (`--memory 2g`, `--cpus 2`, `--pids-limit 256`).
+
+**Floop volume lifecycle:**
+- Train: `floop-train` volume, read-write. Behaviors accumulate across tasks.
+- Eval: same volume mounted read-only. Agent can query but not learn.
+- `make clean` removes all volumes for a fresh start.
+
+**Graceful fallback:** If Docker is unavailable, the orchestrator warns and runs agents directly on the host. Use `--no-sandbox` to opt out explicitly.
 
 ## Repo Isolation
 
