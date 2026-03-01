@@ -135,6 +135,66 @@ The auto-extraction is a separate problem (how to generate good behaviors) that 
 | Floop pack install no-persist | Pack install reports success, behaviors lost on container exit | Symlink global→local so pack writes to volume |
 | Floop v0.10.0 pack bug | `floop pack install` doesn't persist to SQLite | Upgraded to v0.11.1 |
 
+## Run 7: Eval — Curated behaviors A/B test (2026-03-01)
+
+**Arms:** gemini_flash_bare vs gemini_flash_floop (21 behaviors: 9 core + 12 curated)
+**Result:** 40 tasks (20 per arm). $2.68 total. SWE-bench verified evaluation.
+
+**Setup:**
+- Created `swe-bench-expert.fpack` with 12 curated debugging behaviors based on Run 6 transcript analysis
+- Installed alongside floop-core pack (9 meta-behaviors) into floop-train volume
+- Leakage audit: passed (0 eval-specific content in behaviors)
+- SWE-bench evaluation: applied patches and ran test suites via `swebench.harness.run_evaluation`
+
+**Results:**
+
+| Metric | Bare | Floop | Delta |
+|--------|------|-------|-------|
+| Tasks | 20 | 20 | — |
+| Completed (no timeout) | 19 | 18 | -1 |
+| Patches generated | 4 (20%) | 6 (30%) | +50% relative |
+| **Patches resolved** | **2 (10%)** | **0 (0%)** | **-100%** |
+| Avg duration | 88s | 115s | +31% |
+| Total cost | $1.20 | $1.48 | +23% |
+
+**Resolved tasks (bare):**
+- `django__django-16485` — bare resolved, floop submitted patch but FAILED tests
+- `pylint-dev__pylint-6903` — bare resolved, floop submitted patch but FAILED tests
+
+**Floop-only patches (all failed):**
+- `astropy__astropy-14096` — patch failed tests
+- `django__django-11999` — patch failed tests
+- `django__django-13012` — patch failed tests
+- `django__django-15037` — error: patch tried to delete nonexistent file
+
+**Analysis:**
+
+The curated behaviors **increased patch generation** (30% vs 20%) but **decreased patch quality** (0% vs 10% resolve rate). The behaviors encouraged the agent to try harder and not give up, which produced more patches — but the patches were wrong more often.
+
+Two tasks that bare solved correctly (`django-16485`, `pylint-6903`), floop got wrong. This suggests the behavior context may have interfered with the model's natural problem-solving, steering it toward generic heuristics ("explore first", "verify APIs") instead of the specific reasoning needed.
+
+**Possible explanations:**
+1. **Context noise**: 21 behaviors (~3K tokens) added to every prompt may dilute the model's attention on the actual bug description
+2. **Premature commitment**: behaviors like "set exploration budget, then commit" may cause the agent to commit to incorrect fixes faster
+3. **Generic vs specific**: behaviors teach general strategies, but SWE-bench bugs require highly specific code reasoning
+4. **Model quality ceiling**: Gemini 2.5 Flash may not be capable enough to benefit from behavioral guidance — a stronger model might leverage behaviors better
+
+**Conclusion:** For this model/task combination, curated debugging behaviors via prompt injection **do not improve performance** and may actually hurt it. The behaviors successfully changed agent behavior (more patches, more exploration) but not in a way that improved correctness.
+
+### What this means for floop
+
+This doesn't invalidate floop as a concept. It shows that:
+1. **Behavior injection works** — the agent clearly responded to the behaviors (different behavior observed)
+2. **Behavior quality matters** — generic debugging heuristics may not be the right content
+3. **Model capability is a confounder** — Gemini 2.5 Flash may be too weak to benefit; stronger models might leverage context better
+4. **The benchmark is hard** — SWE-bench Verified has a ~30% solve rate even for top agents (Claude 3.5 Sonnet + SWE-agent). Gemini Flash is far below that baseline.
+
+Potential next steps (not pursued in this experiment):
+- Test with a stronger model (Gemini Pro, Claude Sonnet) that might leverage behaviors better
+- Test more specific behaviors (e.g., "when debugging Django, check migrations first")
+- Test fewer behaviors (reduce context noise) — try top-3 instead of 21
+- Test on easier tasks where the model has a reasonable baseline solve rate
+
 ## Cost ledger
 
 | Run | Phase | Arm | Tasks | Cost | Notes |
@@ -145,5 +205,6 @@ The auto-extraction is a separate problem (how to generate good behaviors) that 
 | 4 | train | gemini_flash_floop | 30 | $1.70 | WORKDIR bug, floop init bug |
 | 5 | train | gemini_flash_floop | 30 | $1.70 | 0 behaviors learned (prompt ignored) |
 | 6 | train | gemini_flash_floop | 30 | $1.43 | 1 behavior learned (hybrid harness) |
-| — | smoke (various) | mixed | ~10 | ~$0.80 | Debugging sessions |
-| **Total** | | | | **~$6.24** | |
+| 7 | eval | bare + floop | 40 | $2.68 | 10% bare vs 0% floop resolved |
+| — | smoke (various) | mixed | ~10 | ~$1.00 | Debugging sessions |
+| **Total** | | | | **~$9.12** | |
