@@ -15,9 +15,9 @@ Usage:
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 import click
@@ -51,11 +51,15 @@ def load_eval_patches() -> dict[str, str]:
 
 
 def _get_behaviors_from_volume(volume_name: str) -> list[dict]:
-    """Extract behaviors from a Docker volume by mounting it temporarily."""
+    """Extract behaviors from a container volume by mounting it temporarily."""
+    runtime = shutil.which("podman") or shutil.which("docker")
+    if not runtime:
+        print("No container runtime (podman/docker) found")
+        return []
     try:
         result = subprocess.run(
             [
-                "docker", "run", "--rm",
+                runtime, "run", "--rm",
                 "-v", f"{volume_name}:/floop-store:ro",
                 "floop-sandbox",
                 "floop", "active", "--json", "--root", "/floop-store",

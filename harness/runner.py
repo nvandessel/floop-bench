@@ -9,7 +9,7 @@ import logging
 import shutil
 import subprocess
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from agents.base import Agent, RunResult
@@ -21,11 +21,20 @@ logger = logging.getLogger(__name__)
 SANDBOX_IMAGE = "floop-sandbox"
 
 
+def find_container_runtime() -> str | None:
+    """Find podman or docker on PATH. Returns the command name or None."""
+    for cmd in ("podman", "docker"):
+        if shutil.which(cmd):
+            return cmd
+    return None
+
+
 @dataclass
 class SandboxConfig:
     """Configuration for Docker sandbox execution."""
 
     enabled: bool = True
+    runtime: str = "podman"  # "podman" or "docker"
     image: str = SANDBOX_IMAGE
     floop_volume: str | None = None
     floop_volume_readonly: bool = False
@@ -93,9 +102,9 @@ def _run_sandboxed(
     sandbox: SandboxConfig,
     timeout: int,
 ) -> RunResult:
-    """Run agent inside a Docker container."""
+    """Run agent inside a container."""
     cmd = [
-        "docker", "run", "--rm",
+        sandbox.runtime, "run", "--rm",
         # Security: drop all capabilities, add only what's needed
         "--cap-drop", "ALL",
         "--cap-add", "CHOWN",

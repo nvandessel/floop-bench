@@ -10,7 +10,7 @@ ARG FLOOP_VERSION=0.10.0
 ARG TARGETARCH=amd64
 RUN curl -fsSL "https://github.com/nvandessel/floop/releases/download/v${FLOOP_VERSION}/floop-${FLOOP_VERSION}-linux-${TARGETARCH}.tar.gz" \
     | tar -xz -C /usr/local/bin floop \
-    && chmod +x /usr/local/bin floop
+    && chmod +x /usr/local/bin/floop
 
 # Python tooling (uv for fast installs)
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv

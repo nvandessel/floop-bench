@@ -22,7 +22,6 @@ Usage:
 from __future__ import annotations
 
 import random
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -45,6 +44,7 @@ from harness.runner import (
     SANDBOX_IMAGE,
     SandboxConfig,
     append_prediction,
+    find_container_runtime,
     run_single_task,
 )
 
@@ -117,11 +117,11 @@ def print_summary() -> None:
 # Docker helpers
 # ---------------------------------------------------------------------------
 
-def _docker_available() -> bool:
-    """Check if Docker daemon is reachable."""
+def _image_exists(runtime: str, image: str = SANDBOX_IMAGE) -> bool:
+    """Check if the sandbox image exists locally."""
     try:
         result = subprocess.run(
-            ["docker", "info"],
+            [runtime, "image", "inspect", image],
             capture_output=True,
             timeout=10,
         )
@@ -130,25 +130,12 @@ def _docker_available() -> bool:
         return False
 
 
-def _image_exists(image: str = SANDBOX_IMAGE) -> bool:
-    """Check if the sandbox Docker image exists locally."""
+def _build_image(runtime: str, image: str = SANDBOX_IMAGE) -> bool:
+    """Build the sandbox image from the project Dockerfile."""
+    console.print(f"[cyan]Building sandbox image '{image}' ({runtime})...[/cyan]")
     try:
         result = subprocess.run(
-            ["docker", "image", "inspect", image],
-            capture_output=True,
-            timeout=10,
-        )
-        return result.returncode == 0
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        return False
-
-
-def _build_image(image: str = SANDBOX_IMAGE) -> bool:
-    """Build the sandbox Docker image from the project Dockerfile."""
-    console.print(f"[cyan]Building sandbox image '{image}'...[/cyan]")
-    try:
-        result = subprocess.run(
-            ["docker", "build", "-t", image, "."],
+            [runtime, "build", "-t", image, "."],
             timeout=600,
         )
         if result.returncode == 0:
@@ -162,11 +149,11 @@ def _build_image(image: str = SANDBOX_IMAGE) -> bool:
         return False
 
 
-def _ensure_volume(name: str) -> bool:
-    """Create a Docker volume if it doesn't exist."""
+def _ensure_volume(runtime: str, name: str) -> bool:
+    """Create a container volume if it doesn't exist."""
     try:
         result = subprocess.run(
-            ["docker", "volume", "create", name],
+            [runtime, "volume", "create", name],
             capture_output=True,
             text=True,
             timeout=10,
@@ -176,12 +163,12 @@ def _ensure_volume(name: str) -> bool:
         return False
 
 
-def _init_floop_in_volume(volume_name: str, image: str = SANDBOX_IMAGE) -> bool:
+def _init_floop_in_volume(runtime: str, volume_name: str, image: str = SANDBOX_IMAGE) -> bool:
     """Run `floop init` inside a temporary container with the volume mounted."""
     try:
         result = subprocess.run(
             [
-                "docker", "run", "--rm",
+                runtime, "run", "--rm",
                 "-v", f"{volume_name}:/floop-store",
                 image,
                 "floop", "init", "--root", "/floop-store",
@@ -232,16 +219,17 @@ def _setup_sandbox(
         console.print("[yellow]Sandbox: disabled (--no-sandbox)[/yellow]")
         return None
 
-    if not _docker_available():
+    runtime = find_container_runtime()
+    if not runtime:
         console.print(
-            "[yellow]Sandbox: disabled (Docker not available). "
-            "Install Docker or use --no-sandbox.[/yellow]"
+            "[yellow]Sandbox: disabled (no container runtime found). "
+            "Install podman or docker, or use --no-sandbox.[/yellow]"
         )
         return None
 
     # Auto-build image if missing
-    if not _image_exists():
-        if not _build_image():
+    if not _image_exists(runtime):
+        if not _build_image(runtime):
             console.print(
                 "[yellow]Sandbox: disabled (image build failed). "
                 "Fix Dockerfile or use --no-sandbox.[/yellow]"
@@ -256,13 +244,13 @@ def _setup_sandbox(
 
     if has_floop:
         volume_name = f"floop-{phase}"
-        if not _ensure_volume(volume_name):
-            console.print(f"[red]Failed to create Docker volume '{volume_name}'[/red]")
+        if not _ensure_volume(runtime, volume_name):
+            console.print(f"[red]Failed to create volume '{volume_name}'[/red]")
             return None
 
         if phase == "train" or phase == "smoke":
             # Initialize floop store in the volume
-            _init_floop_in_volume(volume_name)
+            _init_floop_in_volume(runtime, volume_name)
             floop_volume = volume_name
             floop_readonly = False
         elif phase == "eval":
@@ -274,12 +262,13 @@ def _setup_sandbox(
             floop_readonly = True
 
     console.print(
-        f"[green]Sandbox: enabled (Docker)[/green]"
+        f"[green]Sandbox: enabled ({runtime})[/green]"
         + (f" | Volume: {floop_volume} ({'ro' if floop_readonly else 'rw'})" if floop_volume else "")
     )
 
     return SandboxConfig(
         enabled=True,
+        runtime=runtime,
         floop_volume=floop_volume,
         floop_volume_readonly=floop_readonly,
     )
