@@ -6,43 +6,43 @@
 
 [arms.gemini_pro_bare]
 agent = "mini_swe"
-model = "gemini/gemini-3.1-pro-preview"
+model = "gemini/gemini-2.5-pro"
 floop = false
-description = "Gemini 3.1 Pro without floop — performance ceiling"
+description = "Gemini 2.5 Pro without floop — performance ceiling"
 
 [arms.gemini_flash_bare]
 agent = "mini_swe"
-model = "gemini/gemini-3-flash-preview"
+model = "gemini/gemini-2.5-flash"
 floop = false
-description = "Gemini 3 Flash without floop — performance floor"
+description = "Gemini 2.5 Flash without floop — performance floor"
 
 [arms.gemini_flash_floop]
 agent = "mini_swe"
-model = "gemini/gemini-3-flash-preview"
+model = "gemini/gemini-2.5-flash"
 floop = true
 floop_store = "behaviors/store"
-description = "Gemini 3 Flash with floop behaviors"
+description = "Gemini 2.5 Flash with floop behaviors"
 
-# --- Anthropic arms (inactive, uncomment to use) ---
-#
+# --- Anthropic arms ---
+
+[arms.haiku_bare]
+agent = "mini_swe"
+model = "anthropic/claude-haiku-4-5-20251001"
+floop = false
+description = "Haiku without floop — performance floor"
+
+[arms.haiku_floop]
+agent = "mini_swe"
+model = "anthropic/claude-haiku-4-5-20251001"
+floop = true
+floop_store = "behaviors/store"
+description = "Haiku with trained floop behaviors"
+
 # [arms.sonnet_bare]
 # agent = "mini_swe"
 # model = "anthropic/claude-sonnet-4-5-20250929"
 # floop = false
 # description = "Sonnet without floop — performance ceiling"
-#
-# [arms.haiku_bare]
-# agent = "mini_swe"
-# model = "anthropic/claude-haiku-4-5-20251001"
-# floop = false
-# description = "Haiku without floop — performance floor"
-#
-# [arms.haiku_floop]
-# agent = "mini_swe"
-# model = "anthropic/claude-haiku-4-5-20251001"
-# floop = true
-# floop_store = "behaviors/store"
-# description = "Haiku with trained floop behaviors"
 
 # --- Other providers ---
 #
