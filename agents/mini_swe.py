@@ -43,6 +43,7 @@ find . -name "*.py" | head -20
 
 MAX_STEPS = 30
 MAX_OUTPUT_CHARS = 8000
+API_TIMEOUT = 60  # seconds per litellm call
 
 
 def _extract_bash_blocks(text: str) -> list[str]:
@@ -108,18 +109,32 @@ class MiniSweAgent:
         error_message = None
 
         try:
+            api_retries = 0
+            max_api_retries = 3
             for step in range(MAX_STEPS):
                 elapsed = time.monotonic() - start
                 if elapsed >= timeout:
                     status = "timeout"
                     break
 
-                response = litellm.completion(
-                    model=self.model,
-                    messages=messages,
-                    max_tokens=4096,
-                )
+                try:
+                    response = litellm.completion(
+                        model=self.model,
+                        messages=messages,
+                        max_tokens=4096,
+                        timeout=API_TIMEOUT,
+                    )
+                except Exception as api_exc:
+                    api_retries += 1
+                    logger.warning(
+                        "API call failed (attempt %d/%d): %s",
+                        api_retries, max_api_retries, api_exc,
+                    )
+                    if api_retries >= max_api_retries:
+                        raise
+                    continue
 
+                api_retries = 0  # reset on success
                 usage = response.usage
                 if usage:
                     total_input_tokens += usage.prompt_tokens or 0
