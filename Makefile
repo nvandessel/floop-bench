@@ -1,3 +1,7 @@
+# Load .env if present
+-include .env
+export
+
 # Container runtime: prefer podman, fall back to docker
 CONTAINER_RT := $(shell command -v podman 2>/dev/null || command -v docker 2>/dev/null)
 IMAGE        := floop-sandbox

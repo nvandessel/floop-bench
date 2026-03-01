@@ -13,11 +13,18 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 
+# Suppress litellm's stdout noise (colored banners, debug info)
+os.environ["LITELLM_LOG"] = "ERROR"
+
 from agents.mini_swe import MiniSweAgent
 from floop_integration.inject import build_floop_preamble, get_floop_context
+
+import litellm
+litellm.suppress_debug_info = True
 
 # All logging to stderr so stdout stays clean JSON
 logging.basicConfig(

@@ -30,26 +30,22 @@ make build
 
 ### API Keys
 
-The `mini_swe` agent uses [litellm](https://github.com/BerriAI/litellm), which supports most model providers. Set the API key for whichever provider your arms use:
+Copy `.env` and add your key(s). The Makefile loads this automatically:
 
 ```bash
-# Anthropic (Claude Haiku, Sonnet, Opus)
-export ANTHROPIC_API_KEY=sk-ant-...
-
-# OpenAI (GPT-4o, GPT-4o-mini, o1, o3)
-export OPENAI_API_KEY=sk-...
-
-# Google (Gemini)
-export GEMINI_API_KEY=...
-
-# Groq (Llama, Mixtral — free tier available)
-export GROQ_API_KEY=gsk_...
-
-# Local models via Ollama (no key needed)
-# Just run: ollama serve
+cp .env.example .env
+# Edit .env with your key(s)
 ```
 
-Set whichever keys you need for the models configured in `config/arms.toml`. Multiple can be set at once if your arms span providers.
+`.env` format:
+
+```
+GEMINI_API_KEY=your-key-here
+# ANTHROPIC_API_KEY=sk-ant-...
+# OPENAI_API_KEY=sk-...
+```
+
+Set whichever keys you need for the models configured in `config/arms.toml`. Keys are forwarded into sandbox containers automatically.
 
 Validate the environment:
 

@@ -200,24 +200,36 @@ def _run_sandboxed(
             error_message=f"Container exited {proc.returncode}: {proc.stderr[:500]}",
         )
 
-    # Parse RunResult from stdout
-    try:
-        data = json.loads(proc.stdout)
-        return RunResult(**data)
-    except (json.JSONDecodeError, TypeError) as exc:
-        return RunResult(
-            instance_id="",
-            arm="",
-            model_patch="",
-            model=arm.model,
-            floop_enabled=arm.floop,
-            status="error",
-            duration_seconds=0.0,
-            input_tokens=0,
-            output_tokens=0,
-            cost_usd=0.0,
-            error_message=f"Failed to parse container output: {exc}. stdout: {proc.stdout[:500]}",
-        )
+    # Parse RunResult from stdout — find the JSON line (litellm may pollute stdout)
+    data = None
+    for line in reversed(proc.stdout.splitlines()):
+        line = line.strip()
+        if line.startswith("{"):
+            try:
+                data = json.loads(line)
+                break
+            except json.JSONDecodeError:
+                continue
+
+    if data is not None:
+        try:
+            return RunResult(**data)
+        except TypeError as exc:
+            pass  # fall through to error below
+
+    return RunResult(
+        instance_id="",
+        arm="",
+        model_patch="",
+        model=arm.model,
+        floop_enabled=arm.floop,
+        status="error",
+        duration_seconds=0.0,
+        input_tokens=0,
+        output_tokens=0,
+        cost_usd=0.0,
+        error_message=f"No valid JSON in container stdout: {proc.stdout[:500]}",
+    )
 
 
 def run_single_task(
