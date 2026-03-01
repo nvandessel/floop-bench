@@ -5,7 +5,7 @@ export
 # Container runtime: prefer podman, fall back to docker
 CONTAINER_RT := $(shell command -v podman 2>/dev/null || command -v docker 2>/dev/null)
 IMAGE        := floop-sandbox
-FLOOP_VERSION ?= 0.10.0
+FLOOP_VERSION ?= 0.11.1
 
 # Phase defaults
 BUDGET  ?= 55

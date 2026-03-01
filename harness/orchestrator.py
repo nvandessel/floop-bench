@@ -164,21 +164,44 @@ def _ensure_volume(runtime: str, name: str) -> bool:
 
 
 def _init_floop_in_volume(runtime: str, volume_name: str, image: str = SANDBOX_IMAGE) -> bool:
-    """Run `floop init` inside a temporary container with the volume mounted."""
+    """Run `floop init` + install core pack inside a single temporary container.
+
+    Symlinks ~/.floop → /floop-store/.floop so that both local (--root) and
+    global (~) stores write to the volume. Without this, pack-installed
+    behaviors go to the ephemeral container home and are lost on exit.
+    """
+    pack_url = "https://raw.githubusercontent.com/nvandessel/floop/main/.floop/packs/floop-core.fpack"
+    script = (
+        "floop init --root /floop-store"
+        " && ln -sfn /floop-store/.floop /root/.floop"
+        f" && floop pack install '{pack_url}' --root /floop-store"
+    )
     try:
         result = subprocess.run(
             [
                 runtime, "run", "--rm",
                 "-v", f"{volume_name}:/floop-store",
-                "--entrypoint", "floop",
+                "--entrypoint", "/bin/bash",
                 image,
-                "init", "--root", "/floop-store",
+                "-c", script,
             ],
             capture_output=True,
             text=True,
-            timeout=30,
+            timeout=90,
         )
-        return result.returncode == 0
+        if result.returncode != 0:
+            stderr = result.stderr.strip()
+            stdout = result.stdout.strip()
+            # Check if init succeeded but pack install failed (non-fatal)
+            if "pack" in stderr.lower() or "pack" in stdout.lower():
+                console.print(
+                    f"[yellow]Warning: floop pack install failed: "
+                    f"{stderr or stdout}[/yellow]"
+                )
+                return True  # init succeeded
+            console.print(f"[red]floop init failed: {stderr}[/red]")
+            return False
+        return True
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return False
 

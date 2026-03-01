@@ -23,6 +23,7 @@ class RunResult:
     cost_usd: float
     transcript_path: str | None = None
     error_message: str | None = None
+    transcript: list[dict] | None = None  # agent conversation for fallback learning
 
     def to_prediction(self) -> dict:
         """Format as SWE-bench prediction JSONL entry."""
@@ -33,7 +34,9 @@ class RunResult:
         }
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        d = asdict(self)
+        d.pop("transcript", None)  # never serialize transcript
+        return d
 
 
 @runtime_checkable

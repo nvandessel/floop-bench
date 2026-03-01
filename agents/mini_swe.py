@@ -191,4 +191,5 @@ class MiniSweAgent:
             output_tokens=total_output_tokens,
             cost_usd=total_cost,
             error_message=error_message,
+            transcript=messages,
         )
