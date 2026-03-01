@@ -120,8 +120,8 @@ def _run_sandboxed(
         f"--memory={sandbox.memory}",
         f"--cpus={sandbox.cpus}",
         f"--pids-limit={sandbox.pids_limit}",
-        # Bind mount worktree as /workspace
-        "-v", f"{task_dir.resolve()}:/workspace",
+        # Bind mount worktree as /workspace (:z relabels for SELinux)
+        "-v", f"{task_dir.resolve()}:/workspace:z",
     ]
 
     # Floop volume mount
