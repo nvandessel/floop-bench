@@ -16,7 +16,7 @@ else
   ARM_FLAG :=
 endif
 
-.PHONY: build shell smoke train eval leakage clean help
+.PHONY: build shell smoke train eval leakage reset clean help
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -50,6 +50,10 @@ eval: build ## Run eval phase (20 tasks, sandboxed, leakage audit auto-runs)
 leakage: ## Run leakage audit against train volume
 	uv run python -m scripts.check_leakage --volume floop-train
 
-clean: ## Remove floop volumes and sandbox image
+reset: ## Clear results DB, predictions, transcripts, and floop volumes
+	rm -f results/results.db
+	rm -rf results/predictions results/transcripts
 	-$(CONTAINER_RT) volume rm floop-smoke floop-train floop-eval 2>/dev/null
+
+clean: reset ## Reset + remove sandbox image
 	-$(CONTAINER_RT) rmi $(IMAGE) 2>/dev/null
