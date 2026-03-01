@@ -60,15 +60,90 @@
 | SELinux denials | Container couldn't read bind-mounted files on Fedora | `:z` relabel flag on bind mount |
 | No `.env` support | API keys lost between terminal sessions | Makefile `-include .env` + `.env.example` |
 
-## Open problems
+## Run 6: Train — Hybrid floop integration (2026-03-01)
 
-### Agent doesn't use floop (critical)
+**Arms:** gemini_flash_floop (gemini-2.5-flash, floop=true, hybrid harness-forced)
+**Result:** 29/30 completed, 1 timeout. $1.43 total. **1 behavior learned.**
 
-The floop CLI cadence instructions are in the user message preamble but Gemini 2.5 Flash ignores them. Options:
+**What changed from Run 5:**
+- Harness now forces floop usage in three phases:
+  1. **Pre-run:** harness calls `floop active`, injects behaviors into prompt
+  2. **Agent run:** unchanged, prompt still encourages organic `floop learn`
+  3. **Post-run fallback:** if agent didn't learn, extract insight from transcript via LLM call, then call `floop learn --scope local`
+- Installed `floop-core` seedpack (9 meta-behaviors teaching agents how to use floop) into the volume at init
+- Fixed cross-container persistence: floop stores derived behaviors in `~/.floop/` (global), not `--root` (local). In containers `~/.floop/` is ephemeral. Fixed with symlink `~/.floop → /floop-store/.floop` + `--scope local` on `floop learn`.
+- Bumped floop to v0.11.1 (v0.10.0 pack install didn't persist behaviors)
 
-1. **System prompt** — move floop instructions there (more authoritative for most models)
-2. **Force initial query** — run `floop active` before the agent loop and inject results into context
-3. **Automatic floop learn** — inject learning calls after each step instead of relying on the model
-4. **Structured tool use** — instead of bash-based floop CLI, expose floop as a proper tool/function call
+**Findings:**
+- **1 behavior out of 30 tasks.** The fallback `_extract_insight` prompt is too conservative — it asks for "generalizable, non-instance-specific" insights and gives the LLM an easy escape hatch (`NOTHING`). Flash takes that exit on 29/30 tasks.
+- The one behavior learned was from `pydata/xarray-6938`: "ensure deep-copied mutable state for all child objects". Reasonable insight, but a single behavior provides zero statistical signal for eval.
+- **Conclusion: auto-extraction from short transcripts doesn't work.** The transcripts are too compressed (4k chars), the bug fixes too instance-specific, and the extraction model too conservative.
 
-The core question: should the agent use floop organically (prompt-based) or should the harness force it (programmatic)?
+### Transcript analysis — what the agent actually does wrong
+
+Analyzed all 30 Run 6 transcripts to identify patterns:
+
+**By the numbers:**
+- 7/30 (23%) produced a model_patch
+- 23/30 (77%) produced nothing
+- Of the 7 patches, only 1-2 are likely correct (3-7% effective success rate)
+- Most expensive failure: sphinx-doc__sphinx-10449 — 558K input tokens, $0.18, no output
+
+**Top failure modes:**
+
+| Mode | Count | Example | Description |
+|------|-------|---------|-------------|
+| Premature surrender | ~10 | django-14672 (8s, 900 tokens) | Agent reads problem, gives up without running any bash commands |
+| Exploration thrashing | ~5 | sphinx-10449 (319s, 558K tokens) | Agent reads files endlessly, never attempts a fix |
+| Hallucinated APIs | 2-3 | sphinx-8459, pylint-4551 | Agent imports modules/calls functions that don't exist, never verifies |
+| Catastrophic over-editing | 1 | django-14631 (rewrote 280 lines) | Agent rewrites entire file instead of surgical fix |
+| Shotgun patching | 1 | django-16116 | Agent duplicates same fix at 4 locations instead of finding the right one |
+| No verification | all 7 | — | No agent ran tests or even `python -c "import ..."` after editing |
+
+**The one success:** django-15103 — 4.6K tokens, 26s, one-line fix making `element_id` optional. The agent went directly to the right file and made the right change.
+
+### Pivot: curated behaviors instead of auto-extraction
+
+**Problem:** Auto-extraction produces ~1 behavior per 30 tasks. An eval with 1 behavior vs 0 behaviors is statistically meaningless.
+
+**New approach:** Manually write 10-15 high-quality behaviors based on the transcript analysis. These encode the debugging strategies and anti-pattern avoidance that a human SWE-bench expert would teach a junior engineer:
+
+1. "Always explore the codebase before giving up"
+2. "Set an exploration budget, then commit to a fix"
+3. "Verify your changes compile/import before submitting"
+4. "Keep patches minimal — change the fewest lines possible"
+5. "Verify APIs exist before using them"
+6. etc.
+
+This tests the **real floop value proposition**: does injecting known-good behaviors into an agent's context improve performance? If yes, floop works. If no, prompt-injected behaviors don't help (at least for this model/task combo).
+
+The auto-extraction is a separate problem (how to generate good behaviors) that we can revisit after validating that good behaviors help at all.
+
+## Infrastructure bugs fixed along the way
+
+| Bug | Symptom | Fix |
+|-----|---------|-----|
+| No per-call API timeout | Single hung call burns entire task budget | `timeout=60` on `litellm.completion()` + 3 retries |
+| Hardcoded `docker` | "Docker not available" on Podman systems | `find_container_runtime()` prefers podman |
+| Relative worktree paths | `git worktree add` failed on re-runs | `.resolve()` for absolute paths + prune before add |
+| litellm stdout noise | Container output JSON parsing failed | `suppress_debug_info=True` + scan for last JSON line |
+| `WORKDIR /workspace` | `uv run` created fresh venv in bind mount | `WORKDIR /app` |
+| Missing `--entrypoint` | `floop init`/`floop active` hit agent CLI | `--entrypoint floop` for utility commands |
+| SELinux denials | Container couldn't read bind-mounted files on Fedora | `:z` relabel flag on bind mount |
+| No `.env` support | API keys lost between terminal sessions | Makefile `-include .env` + `.env.example` |
+| Floop global vs local store | Behaviors written to ephemeral `~/.floop/` in container | Symlink `~/.floop → volume` + `--scope local` |
+| Floop pack install no-persist | Pack install reports success, behaviors lost on container exit | Symlink global→local so pack writes to volume |
+| Floop v0.10.0 pack bug | `floop pack install` doesn't persist to SQLite | Upgraded to v0.11.1 |
+
+## Cost ledger
+
+| Run | Phase | Arm | Tasks | Cost | Notes |
+|-----|-------|-----|-------|------|-------|
+| 1 | smoke | gemini_flash_bare (3.x preview) | 2 | ~$0.00 | Model hung, 0 output tokens |
+| 2 | smoke | haiku_bare | 2 | $0.53 | Too expensive for cheap arm |
+| 3 | smoke | gemini_flash_bare | 2 | $0.08 | Baseline established |
+| 4 | train | gemini_flash_floop | 30 | $1.70 | WORKDIR bug, floop init bug |
+| 5 | train | gemini_flash_floop | 30 | $1.70 | 0 behaviors learned (prompt ignored) |
+| 6 | train | gemini_flash_floop | 30 | $1.43 | 1 behavior learned (hybrid harness) |
+| — | smoke (various) | mixed | ~10 | ~$0.80 | Debugging sessions |
+| **Total** | | | | **~$6.24** | |

@@ -57,13 +57,17 @@ def _get_behaviors_from_volume(volume_name: str) -> list[dict]:
         print("No container runtime (podman/docker) found")
         return []
     try:
+        # Need rw mount (SQLite WAL requires write access) and symlink setup
+        # so pack-installed behaviors in .floop/ subdirectory are visible.
         result = subprocess.run(
             [
                 runtime, "run", "--rm",
-                "-v", f"{volume_name}:/floop-store:ro",
-                "--entrypoint", "floop",
+                "-v", f"{volume_name}:/floop-store:z",
+                "--entrypoint", "/bin/bash",
                 "floop-sandbox",
-                "active", "--json", "--root", "/floop-store",
+                "-c",
+                "ln -sfn /floop-store/.floop /root/.floop"
+                " && floop active --json --root /floop-store",
             ],
             capture_output=True,
             text=True,
@@ -93,13 +97,15 @@ def scan_behaviors(behaviors: list[dict], eval_ids: list[str], eval_patches: dic
                 print(f"  LEAK: Behavior {i} contains eval instance ID: {eid}")
                 leaks_found += 1
 
-        # Check for eval patch code snippets (lines > 20 chars)
+        # Check for eval patch code snippets (meaningful lines only)
         for eid, patch in eval_patches.items():
             for line in patch.split("\n"):
                 line = line.strip()
-                if len(line) > 20 and line.startswith(("+", "-")):
-                    clean_line = line[1:].strip()
-                    if clean_line and clean_line in content:
+                if not line.startswith(("+", "-")):
+                    continue
+                clean_line = line[1:].strip()
+                # Skip short/generic snippets that cause false positives
+                if len(clean_line) > 30 and clean_line in content:
                         print(
                             f"  LEAK: Behavior {i} contains eval patch code "
                             f"from {eid}: {clean_line[:60]}..."

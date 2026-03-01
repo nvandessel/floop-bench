@@ -158,33 +158,53 @@ def _ensure_volume(runtime: str, name: str) -> bool:
             text=True,
             timeout=10,
         )
-        return result.returncode == 0
+        if result.returncode == 0:
+            return True
+        # Podman returns non-zero if volume already exists (unlike Docker)
+        if "already exists" in (result.stderr + result.stdout):
+            return True
+        return False
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return False
 
 
 def _init_floop_in_volume(runtime: str, volume_name: str, image: str = SANDBOX_IMAGE) -> bool:
-    """Run `floop init` + install core pack inside a single temporary container.
+    """Run `floop init` + install packs inside a single temporary container.
+
+    Installs two packs:
+    1. floop-core — meta-behaviors teaching agents how to use floop
+    2. swe-bench-expert — curated debugging behaviors from transcript analysis
 
     Symlinks ~/.floop → /floop-store/.floop so that both local (--root) and
     global (~) stores write to the volume. Without this, pack-installed
     behaviors go to the ephemeral container home and are lost on exit.
     """
-    pack_url = "https://raw.githubusercontent.com/nvandessel/floop/main/.floop/packs/floop-core.fpack"
+    core_pack_url = "https://raw.githubusercontent.com/nvandessel/floop/main/.floop/packs/floop-core.fpack"
+    local_pack = Path("config/behaviors/swe-bench-expert.fpack").resolve()
+
     script = (
         "floop init --root /floop-store"
         " && ln -sfn /floop-store/.floop /root/.floop"
-        f" && floop pack install '{pack_url}' --root /floop-store"
+        f" && floop pack install '{core_pack_url}' --root /floop-store"
     )
+    if local_pack.exists():
+        script += " && floop pack install /tmp/swe-bench-expert.fpack --root /floop-store"
+
+    cmd = [
+        runtime, "run", "--rm",
+        "-v", f"{volume_name}:/floop-store",
+    ]
+    if local_pack.exists():
+        cmd.extend(["-v", f"{local_pack}:/tmp/swe-bench-expert.fpack:ro,z"])
+    cmd.extend([
+        "--entrypoint", "/bin/bash",
+        image,
+        "-c", script,
+    ])
+
     try:
         result = subprocess.run(
-            [
-                runtime, "run", "--rm",
-                "-v", f"{volume_name}:/floop-store",
-                "--entrypoint", "/bin/bash",
-                image,
-                "-c", script,
-            ],
+            cmd,
             capture_output=True,
             text=True,
             timeout=90,
