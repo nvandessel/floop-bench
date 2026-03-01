@@ -61,8 +61,9 @@ def _get_behaviors_from_volume(volume_name: str) -> list[dict]:
             [
                 runtime, "run", "--rm",
                 "-v", f"{volume_name}:/floop-store:ro",
+                "--entrypoint", "floop",
                 "floop-sandbox",
-                "floop", "active", "--json", "--root", "/floop-store",
+                "active", "--json", "--root", "/floop-store",
             ],
             capture_output=True,
             text=True,

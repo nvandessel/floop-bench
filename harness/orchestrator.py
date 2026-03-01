@@ -170,8 +170,9 @@ def _init_floop_in_volume(runtime: str, volume_name: str, image: str = SANDBOX_I
             [
                 runtime, "run", "--rm",
                 "-v", f"{volume_name}:/floop-store",
+                "--entrypoint", "floop",
                 image,
-                "floop", "init", "--root", "/floop-store",
+                "init", "--root", "/floop-store",
             ],
             capture_output=True,
             text=True,
