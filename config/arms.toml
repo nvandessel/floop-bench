@@ -23,6 +23,29 @@ floop = true
 floop_store = "behaviors/store"
 description = "Gemini 2.5 Flash with floop behaviors"
 
+# --- Run 8: diagnostic arms ---
+
+[arms.flash_placebo]
+agent = "mini_swe"
+model = "gemini/gemini-2.5-flash"
+floop = false
+floop_context_override = "placebo"
+description = "Flash with placebo prompt text (control for prompt length)"
+
+[arms.flash_floop_3]
+agent = "mini_swe"
+model = "gemini/gemini-2.5-flash"
+floop = false
+floop_context_override = "top3"
+description = "Flash with 3 focused behaviors, no cadence"
+
+[arms.pro_floop_3]
+agent = "mini_swe"
+model = "gemini/gemini-2.5-pro"
+floop = false
+floop_context_override = "top3"
+description = "Pro with 3 focused behaviors, no cadence"
+
 # --- Anthropic arms ---
 
 [arms.haiku_bare]

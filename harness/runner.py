@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from agents.base import Agent, RunResult
-from floop_integration.inject import get_floop_context
+from floop_integration.inject import get_floop_context, get_override_context
 from harness.config import ArmConfig, create_agent
 
 logger = logging.getLogger(__name__)
@@ -154,6 +154,12 @@ def _run_sandboxed(
     if arm.floop and sandbox.floop_volume:
         input_data["floop_store"] = "/floop-store"
 
+    # Context override: compute on host, pass pre-built text to container
+    if arm.floop_context_override:
+        override_text = get_override_context(arm.floop_context_override)
+        if override_text:
+            input_data["floop_context_override"] = override_text
+
     logger.info(
         "Running sandboxed: %s (model=%s, floop=%s)",
         instance["instance_id"], arm.model, arm.floop,
@@ -263,7 +269,9 @@ def run_single_task(
         else:
             # Direct execution (no sandbox)
             floop_context = None
-            if arm.floop and arm.floop_store:
+            if arm.floop_context_override:
+                floop_context = get_override_context(arm.floop_context_override)
+            elif arm.floop and arm.floop_store:
                 floop_context = get_floop_context(
                     Path(arm.floop_store), task_type="bug-fix"
                 )

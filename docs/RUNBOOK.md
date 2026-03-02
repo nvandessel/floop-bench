@@ -195,6 +195,102 @@ Potential next steps (not pursued in this experiment):
 - Test fewer behaviors (reduce context noise) — try top-3 instead of 21
 - Test on easier tasks where the model has a reasonable baseline solve rate
 
+## Run 8: Isolating why floop hurt performance (2026-03-01)
+
+**Goal:** Run 7 showed floop hurt performance (bare 10%, floop 0%). Three confounded hypotheses: (1) context noise — 21 behaviors diluted attention, (2) model too weak — Flash can't leverage guidance, (3) wrong content — generic heuristics don't help code reasoning. This run isolates each factor.
+
+### Phase 1: Flash diagnostic (3 arms, ~$4)
+
+| Arm | Model | Context | Tests |
+|-----|-------|---------|-------|
+| `flash_bare` | gemini-2.5-flash | None | Replication — is 10% stable? |
+| `flash_floop_3` | gemini-2.5-flash | 3 focused behaviors (no cadence) | Were 21 behaviors too many? |
+| `flash_placebo` | gemini-2.5-flash | ~500 tok generic SE text | Does ANY extra text hurt? |
+
+**The 3 behaviors** (chosen to address observed failure modes):
+1. "Locate the exact function mentioned in the traceback before editing any code" (addresses wrong-function bug)
+2. "Make the smallest possible change — never copy-paste code between functions" (addresses hallucination)
+3. "After editing, verify your change by running: python -c 'import <module>'" (addresses no-verification)
+
+**Decision gate:**
+- bare ~10% and floop_3 >= bare → proceed to Phase 2
+- bare drops to 0% → tasks too hard for Flash; skip to Pro only
+- placebo also drops → problem is prompt length, not content
+
+### Phase 2: Pro model (2 arms, ~$12)
+
+| Arm | Model | Context | Tests |
+|-----|-------|---------|-------|
+| `gemini_pro_bare` | gemini-2.5-pro | None | Stronger baseline (expect 15-25%) |
+| `pro_floop_3` | gemini-2.5-pro | 3 focused behaviors (no cadence) | Can a stronger model leverage behaviors? |
+
+### Interpretation matrix
+
+| Pattern | Meaning |
+|---------|---------|
+| bare=10%, placebo=10%, floop_3=15% | Focused behaviors help — floop works with fewer, better behaviors |
+| bare=10%, placebo=5%, floop_3=5% | Any extra text hurts — need ultra-concise injection |
+| bare=10%, placebo=10%, floop_3=5% | Behavior content is harmful — these behaviors steer wrong |
+| pro_bare=25%, pro_floop_3=30%+ | Floop helps stronger models — positive result |
+| pro_bare=25%, pro_floop_3=20% | Floop hurts even Pro — prompt-injected behaviors don't help for SWE-bench |
+
+### Implementation notes
+
+Override arms use `floop_context_override` instead of real floop volume. The harness computes context on the host and passes pre-built text to the container, bypassing `floop init`/`floop active`. This avoids volume setup complexity and ensures exact control over injected content.
+
+### Results
+
+#### Phase 1: Flash diagnostic
+
+| Arm | Patches | Resolved | Rate | Completed | Timeouts | Cost |
+|-----|---------|----------|------|-----------|----------|------|
+| `gemini_flash_bare` (Run 7) | 4/20 | **2/20** | **10%** | 19 | 1 | $1.20 |
+| `flash_floop_3` | 5/20 | **1/20** | **5%** | 19 | 1 | $1.46 |
+| `flash_placebo` | 6/20 | **0/20** | **0%** | 19 | 1 | $1.41 |
+| `gemini_flash_floop` (Run 7) | 6/20 | **0/20** | **0%** | 18 | 2 | $1.48 |
+
+**Resolved tasks:**
+- `gemini_flash_bare`: `django-16485`, `pylint-6903`
+- `flash_floop_3`: `pylint-6903` only (the "locate exact function" behavior helped)
+- `flash_placebo`: none
+- `gemini_flash_floop` (Run 7): none
+
+**Interpretation:** Clear dose-response — more prompt text = worse performance. Bare (0 extra chars) > floop_3 (511 chars) > placebo (2025 chars) = floop_21 (~3K chars). The 3 focused behaviors partially recovered `pylint-6903` that the 21-behavior version lost, but still lost `django-16485`. The problem is fundamentally **prompt length for Flash** — any extra context dilutes its limited attention.
+
+#### Phase 2: Pro model
+
+| Arm | Patches | Resolved | Rate | Completed | Timeouts | Cost |
+|-----|---------|----------|------|-----------|----------|------|
+| `gemini_pro_bare` | 0/20 | **0/20** | **0%** | 7 | 13 | $6.48 |
+| `pro_floop_3` | 1/20 | **1/20** | **5%** | 8 | 12 | $6.27 |
+
+**Resolved tasks:**
+- `pro_floop_3`: `pylint-6903` (same task, behaviors helped Pro too)
+- `gemini_pro_bare`: none
+
+**Major confound: timeout.** Pro timed out on 13/20 (bare) and 12/20 (floop_3) tasks at 300s. Pro is much slower per API call than Flash (~2-4x thinking time), so most tasks never completed the agent loop. The 300s timeout that works for Flash is too tight for Pro.
+
+**Despite the confound:** pro_floop_3 completed 1 more task (8 vs 7) and produced the only patch. The "locate the exact function" behavior consistently helps `pylint-6903` across both models — this is the one behavior with clear signal.
+
+### Analysis
+
+**What we learned:**
+
+1. **Prompt length matters for Flash.** Clear monotonic degradation: 0 chars (10%) > 511 chars (5%) > 2K chars (0%) > 3K chars (0%). Flash has limited attention capacity and any extra context competes with the bug description.
+
+2. **Focused behaviors > many behaviors.** 3 behaviors (5%) beat 21 behaviors (0%) on Flash. The "locate the exact function" behavior specifically fixed the `pylint-6903` failure mode it was designed for — across both Flash and Pro.
+
+3. **Pro needs more time.** 300s timeout is insufficient for Gemini 2.5 Pro's thinking-heavy agent loop. 65% timeout rate makes the Pro comparison unreliable. Would need 600-900s timeout for meaningful Pro data.
+
+4. **One behavior has real signal.** `pylint-6903` was resolved by the focused behaviors on both Flash and Pro, but not by bare Pro or placebo. The "locate the exact function in the traceback" behavior is genuinely helpful for navigation-error bugs. But n=1 is not statistically significant.
+
+**What this means for floop:**
+
+The core finding is nuanced: behavioral guidance **can help** (pylint-6903 is proof), but the **injection cost** (extra tokens in context) can outweigh the benefit for weak models. Floop needs either:
+- Ultra-concise behaviors (single sentences, not paragraphs)
+- Smarter injection (only inject relevant behaviors per-task, not all)
+- Stronger models that can absorb extra context without attention loss
+
 ## Cost ledger
 
 | Run | Phase | Arm | Tasks | Cost | Notes |
@@ -206,5 +302,9 @@ Potential next steps (not pursued in this experiment):
 | 5 | train | gemini_flash_floop | 30 | $1.70 | 0 behaviors learned (prompt ignored) |
 | 6 | train | gemini_flash_floop | 30 | $1.43 | 1 behavior learned (hybrid harness) |
 | 7 | eval | bare + floop | 40 | $2.68 | 10% bare vs 0% floop resolved |
+| 8a | eval | flash_floop_3 | 20 | $1.46 | 5% — 3 behaviors partial recovery |
+| 8b | eval | flash_placebo | 20 | $1.41 | 0% — placebo text hurts too |
+| 8c | eval | gemini_pro_bare | 20 | $6.48 | 0% — 65% timeout rate at 300s |
+| 8d | eval | pro_floop_3 | 20 | $6.27 | 5% — behaviors help Pro on pylint-6903 |
 | — | smoke (various) | mixed | ~10 | ~$1.00 | Debugging sessions |
-| **Total** | | | | **~$9.12** | |
+| **Total** | | | | **~$24.80** | |

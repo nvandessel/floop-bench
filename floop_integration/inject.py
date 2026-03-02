@@ -6,6 +6,98 @@ from pathlib import Path
 
 from floop_integration.cli import get_active_behaviors
 
+
+# ~500 tokens of plausible-but-useless software engineering text.
+# Used as a control to test whether ANY extra prompt text hurts performance,
+# independent of content quality.
+PLACEBO_TEXT = """\
+## Software Engineering Principles
+
+Good software engineering practice involves several foundational principles that \
+guide effective development. The DRY principle (Don't Repeat Yourself) suggests \
+that every piece of knowledge should have a single, unambiguous representation \
+within a system. This reduces the risk of inconsistencies and makes maintenance \
+easier over time.
+
+The SOLID principles provide a framework for object-oriented design. The Single \
+Responsibility Principle states that a class should have only one reason to change. \
+The Open/Closed Principle suggests that software entities should be open for \
+extension but closed for modification. The Liskov Substitution Principle requires \
+that objects of a superclass should be replaceable with objects of a subclass \
+without affecting program correctness. The Interface Segregation Principle states \
+that no client should be forced to depend on methods it does not use. The \
+Dependency Inversion Principle suggests that high-level modules should not depend \
+on low-level modules; both should depend on abstractions.
+
+Code readability is often more important than cleverness. Clear variable names, \
+consistent formatting, and well-structured functions make code easier to understand \
+and maintain. Comments should explain why something is done, not what is done — \
+the code itself should be clear enough to show the what.
+
+Testing is an essential part of software development. Unit tests verify individual \
+components in isolation, integration tests verify that components work together, \
+and end-to-end tests verify the complete system. A good test suite gives developers \
+confidence to refactor and extend code without fear of breaking existing functionality.
+
+Version control systems like Git enable collaborative development by tracking \
+changes over time. Meaningful commit messages, feature branches, and code reviews \
+help maintain code quality and share knowledge across teams. Regular integration \
+of changes reduces the risk of merge conflicts and integration problems."""
+
+
+# Three focused behaviors addressing the specific failure modes observed in Run 7.
+# No cadence instructions — just the behaviors themselves.
+TOP3_BEHAVIORS = [
+    {
+        "kind": "behavior",
+        "content": {
+            "canonical": (
+                "Locate the exact function mentioned in the traceback before "
+                "editing any code — read the error to identify the right file "
+                "and function."
+            ),
+        },
+        "tags": ["bug-fix", "navigation"],
+    },
+    {
+        "kind": "behavior",
+        "content": {
+            "canonical": (
+                "Make the smallest possible change — a one-line fix is better "
+                "than rewriting a block. Never copy-paste code between functions."
+            ),
+        },
+        "tags": ["bug-fix", "minimal-diff"],
+    },
+    {
+        "kind": "behavior",
+        "content": {
+            "canonical": (
+                "After editing, verify your change by running: "
+                "python -c 'import <module>'"
+            ),
+        },
+        "tags": ["bug-fix", "verification"],
+    },
+]
+
+
+def get_override_context(override: str) -> str | None:
+    """Build context for a floop_context_override arm.
+
+    Args:
+        override: "placebo" for generic text, "top3" for focused behaviors
+
+    Returns:
+        Pre-built context string, or None if override is unrecognized
+    """
+    if override == "placebo":
+        return PLACEBO_TEXT
+    if override == "top3":
+        return build_floop_preamble(TOP3_BEHAVIORS, include_cadence=False)
+    return None
+
+
 FLOOP_CLI_CADENCE = """\
 ## Floop — Learning & Recall System
 

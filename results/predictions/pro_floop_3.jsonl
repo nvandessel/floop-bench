@@ -1,0 +1,20 @@
+{"instance_id": "sympy__sympy-20916", "model_name_or_path": "gemini/gemini-2.5-pro", "model_patch": ""}
+{"instance_id": "django__django-13012", "model_name_or_path": "gemini/gemini-2.5-pro", "model_patch": ""}
+{"instance_id": "pylint-dev__pylint-6903", "model_name_or_path": "gemini/gemini-2.5-pro", "model_patch": "diff --git a/pylint/lint/run.py b/pylint/lint/run.py\nindex a7e5d5574..6c697f765 100644\n--- a/pylint/lint/run.py\n+++ b/pylint/lint/run.py\n@@ -52,12 +52,12 @@ def _query_cpu() -> int | None:\n         with open(\"/sys/fs/cgroup/cpu/cpu.cfs_period_us\", encoding=\"utf-8\") as file:\n             cpu_period = int(file.read().rstrip())\n         # Divide quota by period and you should get num of allotted CPU to the container, rounded down if fractional.\n-        avail_cpu = int(cpu_quota / cpu_period)\n+        avail_cpu = int(cpu_quota / cpu_period) or 1\n     elif Path(\"/sys/fs/cgroup/cpu/cpu.shares\").is_file():\n         with open(\"/sys/fs/cgroup/cpu/cpu.shares\", encoding=\"utf-8\") as file:\n             cpu_shares = int(file.read().rstrip())\n         # For AWS, gives correct value * 1024.\n-        avail_cpu = int(cpu_shares / 1024)\n+        avail_cpu = int(cpu_shares / 1024) or 1\n     return avail_cpu\n \n \n"}
+{"instance_id": "django__django-11999", "model_name_or_path": "gemini/gemini-2.5-pro", "model_patch": ""}
+{"instance_id": "django__django-15037", "model_name_or_path": "gemini/gemini-2.5-pro", "model_patch": ""}
+{"instance_id": "django__django-17084", "model_name_or_path": "gemini/gemini-2.5-pro", "model_patch": ""}
+{"instance_id": "scikit-learn__scikit-learn-14710", "model_name_or_path": "gemini/gemini-2.5-pro", "model_patch": ""}
+{"instance_id": "sympy__sympy-13551", "model_name_or_path": "gemini/gemini-2.5-pro", "model_patch": ""}
+{"instance_id": "django__django-13809", "model_name_or_path": "gemini/gemini-2.5-pro", "model_patch": ""}
+{"instance_id": "django__django-16485", "model_name_or_path": "gemini/gemini-2.5-pro", "model_patch": ""}
+{"instance_id": "sphinx-doc__sphinx-7985", "model_name_or_path": "gemini/gemini-2.5-pro", "model_patch": ""}
+{"instance_id": "django__django-15930", "model_name_or_path": "gemini/gemini-2.5-pro", "model_patch": ""}
+{"instance_id": "django__django-11239", "model_name_or_path": "gemini/gemini-2.5-pro", "model_patch": ""}
+{"instance_id": "django__django-16082", "model_name_or_path": "gemini/gemini-2.5-pro", "model_patch": ""}
+{"instance_id": "django__django-11551", "model_name_or_path": "gemini/gemini-2.5-pro", "model_patch": ""}
+{"instance_id": "sphinx-doc__sphinx-7440", "model_name_or_path": "gemini/gemini-2.5-pro", "model_patch": ""}
+{"instance_id": "django__django-14053", "model_name_or_path": "gemini/gemini-2.5-pro", "model_patch": ""}
+{"instance_id": "django__django-14792", "model_name_or_path": "gemini/gemini-2.5-pro", "model_patch": ""}
+{"instance_id": "astropy__astropy-14096", "model_name_or_path": "gemini/gemini-2.5-pro", "model_patch": ""}
+{"instance_id": "django__django-11749", "model_name_or_path": "gemini/gemini-2.5-pro", "model_patch": ""}

@@ -22,6 +22,8 @@ class ArmConfig:
     model: str
     floop: bool
     floop_store: str | None = None
+    floop_pack: str | None = None
+    floop_context_override: str | None = None
     description: str = ""
 
 
@@ -45,6 +47,8 @@ def load_arms(config_path: Path | str = "config/arms.toml") -> dict[str, ArmConf
             model=cfg["model"],
             floop=cfg.get("floop", False),
             floop_store=floop_store,
+            floop_pack=cfg.get("floop_pack"),
+            floop_context_override=cfg.get("floop_context_override"),
             description=cfg.get("description", ""),
         )
     return arms

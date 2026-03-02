@@ -22,7 +22,7 @@ os.environ["LITELLM_LOG"] = "ERROR"
 
 from agents.mini_swe import MiniSweAgent
 from floop_integration.cli import count_behaviors, learn_from_transcript
-from floop_integration.inject import build_floop_preamble, get_floop_context
+from floop_integration.inject import build_floop_preamble, get_floop_context, get_override_context
 
 import litellm
 litellm.suppress_debug_info = True
@@ -49,16 +49,25 @@ def main() -> None:
     timeout = task.get("timeout", 300)
     floop_enabled = task.get("floop_enabled", False)
     floop_store = task.get("floop_store")
+    floop_context_override = task.get("floop_context_override")
 
     if not problem_statement:
         logger.error("Missing problem_statement in input")
         sys.exit(1)
 
-    # Phase 1: Guaranteed floop active (before agent run)
+    # Phase 1: Build floop context (before agent run)
     floop_context = None
     behavior_count_before = 0
     store_path = None
-    if floop_enabled and floop_store:
+
+    if floop_context_override:
+        # Override arms: use pre-computed context (placebo, top3, etc.)
+        floop_context = floop_context_override
+        logger.info(
+            "Floop context override: %d chars",
+            len(floop_context),
+        )
+    elif floop_enabled and floop_store:
         store_path = Path(floop_store)
         # Symlink global store → volume so pack-installed behaviors are visible
         global_floop = Path.home() / ".floop"
@@ -82,8 +91,8 @@ def main() -> None:
         timeout=timeout,
     )
 
-    # Phase 3: Fallback floop learn (after agent run)
-    if floop_enabled and store_path and result.transcript:
+    # Phase 3: Fallback floop learn (after agent run, real floop arms only)
+    if floop_enabled and store_path and not floop_context_override and result.transcript:
         behavior_count_after = count_behaviors(store_path, task_type="bug-fix")
         if behavior_count_after <= behavior_count_before:
             logger.info("Agent didn't learn — extracting insight from transcript")
