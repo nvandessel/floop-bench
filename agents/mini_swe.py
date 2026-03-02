@@ -43,7 +43,7 @@ find . -name "*.py" | head -20
 
 MAX_STEPS = 30
 MAX_OUTPUT_CHARS = 8000
-API_TIMEOUT = 60  # seconds per litellm call
+API_TIMEOUT = 90  # seconds per litellm call
 
 
 def _extract_bash_blocks(text: str) -> list[str]:

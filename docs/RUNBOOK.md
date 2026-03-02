@@ -291,6 +291,79 @@ The core finding is nuanced: behavioral guidance **can help** (pylint-6903 is pr
 - Smarter injection (only inject relevant behaviors per-task, not all)
 - Stronger models that can absorb extra context without attention loss
 
+## Run 8b: Pro re-run with 600s timeout (2026-03-01/02)
+
+**Goal:** Run 8 Phase 2 was invalidated by 65% timeout rate at 300s. Doubled timeout to 600s and bumped `API_TIMEOUT` from 60→90s per litellm call to give Pro enough time to complete agent loops.
+
+**Arms:** gemini_pro_bare, pro_floop_3 (same 3 focused behaviors as Run 8)
+**Budget:** ~$26 (actual: $26.02)
+
+### Results
+
+| Arm | Patches | Resolved | Rate | Completed | Timeouts | Cost |
+|-----|---------|----------|------|-----------|----------|------|
+| `gemini_pro_bare` | 7/20 | **2/20** | **10%** | 7 | 13 | $12.93 |
+| `pro_floop_3` | 4/20 | **1/20** | **5%** | 7 | 13 | $13.09 |
+
+**Resolved tasks:**
+- `gemini_pro_bare`: `django-11239`, `django-16082`
+- `pro_floop_3`: `django-11999`
+
+**Note:** pro_floop_3 hit Gemini daily rate limit after task 13 (429 `generate_requests_per_model_per_day`). The remaining 7 tasks were re-run after quota reset the following day.
+
+### Timeout analysis
+
+Despite doubling the timeout from 300s → 600s, the timeout rate stayed at **65%** for both arms. The tasks that complete do so well under 600s (34-473s), while the tasks that timeout consistently hit the ceiling. This is a bimodal distribution — Pro either solves it quickly or gets stuck in exploration loops, regardless of time budget.
+
+| Metric | Run 8 (300s) | Run 8b (600s) |
+|--------|-------------|---------------|
+| Pro bare timeout rate | 65% (13/20) | 65% (13/20) |
+| Pro floop timeout rate | 60% (12/20) | 65% (13/20) |
+| Pro bare patches | 0 | 7 |
+| Pro bare resolved | 0 | 2 |
+
+The extra time helped Pro **produce patches** (0→7 for bare) but didn't reduce timeouts. The stuck tasks need a different approach (e.g., explicit "give up and submit what you have" instructions near timeout).
+
+### Head-to-head comparison
+
+| Instance | Bare status | Bare patch | Floop status | Floop patch |
+|----------|-------------|------------|--------------|-------------|
+| django-13012 | completed | patch | completed | no patch |
+| django-17084 | completed | patch | **timeout** | no patch |
+| scikit-learn-14710 | **timeout** | patch* | completed | patch |
+| django-13809 | **timeout** | patch* | timeout | no patch |
+| django-11239 | completed ✅ | patch | **timeout** | no patch |
+| django-16082 | completed ✅ | patch | **timeout** | no patch |
+| django-11999 | **timeout** | no patch | completed ✅ | patch |
+| django-14792 | completed | no patch | completed | patch |
+| django-11749 | completed | patch | completed | patch |
+
+*patch produced before timeout
+
+**Observation:** The arms resolved completely different tasks. No overlap — bare got `django-11239` + `django-16082`, floop got `django-11999`. This is noise, not signal. With n=20 and 65% timeouts, the effective sample is ~7 tasks per arm — far too small for meaningful comparison.
+
+### Conclusions
+
+1. **600s didn't help timeouts.** Pro's timeout rate is structural (agent loops get stuck), not a time budget issue. Going from 300s→600s produced more patches but the same percentage of timeouts.
+
+2. **Pro matches Flash on resolve rate.** Both Pro bare and Flash bare resolve 10% (2/20). Pro costs 10x more ($12.93 vs $1.20) for the same performance, suggesting Gemini 2.5 Pro doesn't bring meaningful capability gains for this agent harness + SWE-bench combo.
+
+3. **Floop result is inconclusive.** Pro floop resolved 1/20 (5%) vs bare's 2/20 (10%), but on completely different tasks. With 65% of tasks timing out, the comparison lacks statistical power. We cannot determine whether behaviors help or hurt Pro.
+
+4. **Experiment is budget-constrained.** At $26/run for Pro (40 tasks), we cannot afford the ~5 runs needed to reduce noise. Further Pro experiments are not cost-effective.
+
+### What this means for the benchmark
+
+The harness + mini_swe agent + SWE-bench Verified combination has fundamental limitations:
+- **Flash** is cheap ($1.20/arm) but too weak to benefit from behavioral guidance (context noise dominates)
+- **Pro** might benefit but is too slow (65% timeouts) and too expensive ($13/arm) to test with statistical power
+- **The agent loop** (bash-only, no file editing tools, no test running) caps performance regardless of model or behaviors
+
+To make further progress, we'd need either:
+- A better agent (SWE-agent-style with proper tools) that raises the baseline above 10%
+- A cheaper strong model where we can afford enough runs for statistical power
+- An easier benchmark where current agent + model combos have a 30%+ baseline
+
 ## Cost ledger
 
 | Run | Phase | Arm | Tasks | Cost | Notes |
@@ -306,5 +379,7 @@ The core finding is nuanced: behavioral guidance **can help** (pylint-6903 is pr
 | 8b | eval | flash_placebo | 20 | $1.41 | 0% — placebo text hurts too |
 | 8c | eval | gemini_pro_bare | 20 | $6.48 | 0% — 65% timeout rate at 300s |
 | 8d | eval | pro_floop_3 | 20 | $6.27 | 5% — behaviors help Pro on pylint-6903 |
+| 8b-bare | eval | gemini_pro_bare (600s) | 20 | $12.93 | 10% — same timeout rate, more patches |
+| 8b-floop | eval | pro_floop_3 (600s) | 20 | $13.09 | 5% — hit daily rate limit, re-ran next day |
 | — | smoke (various) | mixed | ~10 | ~$1.00 | Debugging sessions |
-| **Total** | | | | **~$24.80** | |
+| **Total** | | | | **~$50.80** | |
