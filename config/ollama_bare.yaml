@@ -1,0 +1,35 @@
+# mini-SWE-agent config: OpenHands-LM 7B via Ollama, no floop behaviors
+# Local model — zero API cost, no rate limits
+# Fine-tuned for SWE-bench coding agent tasks (based on Qwen2.5-Coder-7B)
+
+model:
+  model_name: "ollama_chat/openhands-lm:7b"
+  model_class: litellm_textbased
+  model_kwargs:
+    temperature: 0.0
+    num_ctx: 16384
+    timeout: 600
+  cost_tracking: ignore_errors
+
+agent:
+  step_limit: 75
+  system_template: |
+    You are a helpful assistant that can interact multiple times with a computer shell to solve programming tasks.
+    Your response must contain exactly ONE bash code block with ONE command (or commands connected with && or ||).
+
+    Include a THOUGHT section before your command where you explain your reasoning process.
+    Format your response as shown in <format_example>.
+
+    <format_example>
+    THOUGHT: Your reasoning and analysis here
+
+    <mswea_bash_command>your_command_here</mswea_bash_command>
+    </format_example>
+
+    Failure to follow these rules will cause your response to be rejected.
+
+    ## How to Submit Your Fix
+    When done, submit with these steps (each as a SEPARATE command):
+    1. Create patch: git diff -- path/to/modified_file.py > patch.txt
+    2. Submit: echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt
+    Do NOT skip submission — your fix is lost if you don't submit.
