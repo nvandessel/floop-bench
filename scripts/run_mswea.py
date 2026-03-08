@@ -20,6 +20,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -90,6 +91,57 @@ def cli():
     pass
 
 
+def _generate_floop_behaviors() -> str:
+    """Run `floop prompt` on the host and return the behavior text.
+
+    Uses a fake HOME to prevent the global ~/.floop store from leaking
+    personal behaviors into the benchmark. Only the project-local
+    .floop store is used.
+    """
+    floop_bin = shutil.which("floop")
+    if not floop_bin:
+        console.print("[red]floop binary not found on host[/red]")
+        sys.exit(1)
+
+    env = {**subprocess.os.environ, "HOME": "/tmp/floop-bench-nohome"}
+    result = subprocess.run(
+        [floop_bin, "prompt", "--root", str(PROJECT_ROOT), "--task", "bug-fix"],
+        capture_output=True, text=True, timeout=10, env=env,
+    )
+    if result.returncode != 0:
+        console.print(f"[red]floop prompt failed: {result.stderr[:200]}[/red]")
+        sys.exit(1)
+
+    behaviors = result.stdout.strip()
+    console.print(f"[cyan]floop prompt: {len(behaviors)} chars of behaviors[/cyan]")
+    return behaviors
+
+
+def _resolve_floop_config(config_path: Path) -> Path:
+    """Inject floop behaviors into the config's system_template.
+
+    Reads the YAML config, replaces {floop_behaviors} with the output
+    of `floop prompt`, writes a temp config file, returns its path.
+    """
+    with open(config_path) as f:
+        config_text = f.read()
+
+    if "{floop_behaviors}" not in config_text:
+        return config_path
+
+    behaviors = _generate_floop_behaviors()
+    resolved = config_text.replace("{floop_behaviors}", behaviors)
+
+    tmp = tempfile.NamedTemporaryFile(
+        mode="w", suffix=".yaml", prefix="mswea_floop_",
+        dir=CONFIG_DIR, delete=False,
+    )
+    tmp.write(resolved)
+    tmp.close()
+    console.print(f"  Resolved floop config: {tmp.name}")
+    return Path(tmp.name)
+
+
 def _build_mswea_cmd(
     arm: str,
     config_path: Path,
@@ -100,6 +152,10 @@ def _build_mswea_cmd(
     container_rt: str,
 ) -> list[str]:
     """Build the mini-extra swebench command."""
+    # For floop arms, resolve {floop_behaviors} placeholder in config
+    if "floop" in arm:
+        config_path = _resolve_floop_config(config_path)
+
     cmd = [
         "mini-extra", "swebench",
         "--subset", "verified",
@@ -127,9 +183,6 @@ def _build_mswea_cmd(
             store_mount = f"{floop_store}:/floop-store/.floop:ro"
             bin_mount = f"{floop_bin}:/usr/local/bin/floop:ro"
             cmd.extend(["-c", f'environment.run_args=["--rm", "-v", "{store_mount}", "-v", "{bin_mount}"]'])
-        elif not floop_bin:
-            console.print("[red]floop binary not found on host — cannot mount into container[/red]")
-            sys.exit(1)
 
     return cmd
 
