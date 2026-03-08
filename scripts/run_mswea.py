@@ -152,10 +152,6 @@ def _build_mswea_cmd(
     container_rt: str,
 ) -> list[str]:
     """Build the mini-extra swebench command."""
-    # For floop arms, resolve {floop_behaviors} placeholder in config
-    if "floop" in arm:
-        config_path = _resolve_floop_config(config_path)
-
     cmd = [
         "mini-extra", "swebench",
         "--subset", "verified",
@@ -212,6 +208,10 @@ def run(arm: str, workers: int, filter_ids: str | None, cost_limit: float, delay
         config_path = CONFIG_DIR / f"mswea_{arm}.yaml"
     output_dir = _mswea_output_dir(arm)
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    # For floop arms, resolve {floop_behaviors} placeholder once
+    if "floop" in arm:
+        config_path = _resolve_floop_config(config_path)
 
     console.print(f"[cyan]Running mini-SWE-agent: arm={arm}, {len(ids)} tasks[/cyan]")
     console.print(f"  Config: {config_path}")
@@ -410,6 +410,10 @@ def smoke(instance: str, config_name: str):
         config_path = CONFIG_DIR / f"mswea_{config_name}.yaml"
     output_dir = MSWEA_OUTPUT_DIR / "smoke"
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    # For floop configs, resolve {floop_behaviors} placeholder
+    if "floop" in config_name:
+        config_path = _resolve_floop_config(config_path)
 
     console.print(f"[cyan]Smoke test: {instance}[/cyan]")
     console.print(f"  Config: {config_path}")

@@ -12,4 +12,5 @@ results/eval_output/
 results/mswea/
 work/
 logs/
+config/mswea_floop_*.yaml
 .claude/
