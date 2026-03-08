@@ -1,0 +1,9 @@
+# mini-SWE-agent config: Gemini 2.5 Flash, no floop behaviors
+# Used as the baseline arm for the A/B test
+
+model:
+  model_name: "gemini/gemini-2.5-flash"
+  model_class: litellm
+  model_kwargs:
+    drop_params: true
+    temperature: 0.0
