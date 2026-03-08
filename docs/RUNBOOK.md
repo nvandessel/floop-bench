@@ -135,10 +135,11 @@ The auto-extraction is a separate problem (how to generate good behaviors) that 
 | Floop pack install no-persist | Pack install reports success, behaviors lost on container exit | Symlink global→local so pack writes to volume |
 | Floop v0.10.0 pack bug | `floop pack install` doesn't persist to SQLite | Upgraded to v0.11.1 |
 
-## Run 7: Eval — Curated behaviors A/B test (2026-03-01)
+## Run 7: Eval — Curated behaviors A/B test via prompt injection (2026-03-01)
 
-**Arms:** gemini_flash_bare vs gemini_flash_floop (21 behaviors: 9 core + 12 curated)
+**Arms:** gemini_flash_bare vs gemini_flash_behaviors (21 hand-written heuristics: 9 meta + 12 debugging)
 **Result:** 40 tasks (20 per arm). $2.68 total. SWE-bench verified evaluation.
+**What was tested:** Whether adding 21 hand-written debugging heuristics to a system prompt improves agent performance. Floop binary was NOT used — behaviors were hardcoded in a YAML config.
 
 **Setup:**
 - Created `swe-bench-expert.fpack` with 12 curated debugging behaviors based on Run 6 transcript analysis
@@ -148,8 +149,8 @@ The auto-extraction is a separate problem (how to generate good behaviors) that 
 
 **Results:**
 
-| Metric | Bare | Floop | Delta |
-|--------|------|-------|-------|
+| Metric | Bare | Behaviors | Delta |
+|--------|------|-----------|-------|
 | Tasks | 20 | 20 | — |
 | Completed (no timeout) | 19 | 18 | -1 |
 | Patches generated | 4 (20%) | 6 (30%) | +50% relative |
@@ -158,10 +159,10 @@ The auto-extraction is a separate problem (how to generate good behaviors) that 
 | Total cost | $1.20 | $1.48 | +23% |
 
 **Resolved tasks (bare):**
-- `django__django-16485` — bare resolved, floop submitted patch but FAILED tests
-- `pylint-dev__pylint-6903` — bare resolved, floop submitted patch but FAILED tests
+- `django__django-16485` — bare resolved, behaviors arm submitted patch but FAILED tests
+- `pylint-dev__pylint-6903` — bare resolved, behaviors arm submitted patch but FAILED tests
 
-**Floop-only patches (all failed):**
+**Behaviors-arm-only patches (all failed):**
 - `astropy__astropy-14096` — patch failed tests
 - `django__django-11999` — patch failed tests
 - `django__django-13012` — patch failed tests
@@ -169,25 +170,27 @@ The auto-extraction is a separate problem (how to generate good behaviors) that 
 
 **Analysis:**
 
-The curated behaviors **increased patch generation** (30% vs 20%) but **decreased patch quality** (0% vs 10% resolve rate). The behaviors encouraged the agent to try harder and not give up, which produced more patches — but the patches were wrong more often.
+The curated heuristics **increased patch generation** (30% vs 20%) but **decreased patch quality** (0% vs 10% resolve rate). The heuristics encouraged the agent to try harder and not give up, which produced more patches — but the patches were wrong more often.
 
-Two tasks that bare solved correctly (`django-16485`, `pylint-6903`), floop got wrong. This suggests the behavior context may have interfered with the model's natural problem-solving, steering it toward generic heuristics ("explore first", "verify APIs") instead of the specific reasoning needed.
+Two tasks that bare solved correctly (`django-16485`, `pylint-6903`), the behaviors arm got wrong. This suggests the extra context may have interfered with the model's natural problem-solving, steering it toward generic heuristics ("explore first", "verify APIs") instead of the specific reasoning needed.
 
 **Possible explanations:**
-1. **Context noise**: 21 behaviors (~3K tokens) added to every prompt may dilute the model's attention on the actual bug description
-2. **Premature commitment**: behaviors like "set exploration budget, then commit" may cause the agent to commit to incorrect fixes faster
-3. **Generic vs specific**: behaviors teach general strategies, but SWE-bench bugs require highly specific code reasoning
-4. **Model quality ceiling**: Gemini 2.5 Flash may not be capable enough to benefit from behavioral guidance — a stronger model might leverage behaviors better
+1. **Context noise**: 21 heuristics (~3K tokens) added to every prompt may dilute the model's attention on the actual bug description
+2. **Premature commitment**: heuristics like "set exploration budget, then commit" may cause the agent to commit to incorrect fixes faster
+3. **Generic vs specific**: heuristics teach general strategies, but SWE-bench bugs require highly specific code reasoning
+4. **Model quality ceiling**: Gemini 2.5 Flash may not be capable enough to benefit from behavioral guidance — a stronger model might leverage context better
 
-**Conclusion:** For this model/task combination, curated debugging behaviors via prompt injection **do not improve performance** and may actually hurt it. The behaviors successfully changed agent behavior (more patches, more exploration) but not in a way that improved correctness.
+**Conclusion:** For this model/task combination, curated debugging heuristics via prompt injection **do not improve performance** and may actually hurt it. The heuristics successfully changed agent behavior (more patches, more exploration) but not in a way that improved correctness.
 
-### What this means for floop
+### What this means for the benchmark
 
-This doesn't invalidate floop as a concept. It shows that:
-1. **Behavior injection works** — the agent clearly responded to the behaviors (different behavior observed)
-2. **Behavior quality matters** — generic debugging heuristics may not be the right content
+This doesn't invalidate prompt-injected behaviors as a concept. It shows that:
+1. **Prompt injection works** — the agent clearly responded to the injected heuristics (different behavior observed)
+2. **Content quality matters** — generic debugging heuristics may not be the right content
 3. **Model capability is a confounder** — Gemini 2.5 Flash may be too weak to benefit; stronger models might leverage context better
 4. **The benchmark is hard** — SWE-bench Verified has a ~30% solve rate even for top agents (Claude 3.5 Sonnet + SWE-agent). Gemini Flash is far below that baseline.
+
+**Note:** floop-the-binary was not used in this run. "Behaviors" were 21 hand-written sentences in a YAML config file.
 
 Potential next steps (not pursued in this experiment):
 - Test with a stronger model (Gemini Pro, Claude Sonnet) that might leverage behaviors better
@@ -195,9 +198,10 @@ Potential next steps (not pursued in this experiment):
 - Test fewer behaviors (reduce context noise) — try top-3 instead of 21
 - Test on easier tasks where the model has a reasonable baseline solve rate
 
-## Run 8: Isolating why floop hurt performance (2026-03-01)
+## Run 8: Isolating why prompt-injected behaviors hurt performance (2026-03-01)
 
-**Goal:** Run 7 showed floop hurt performance (bare 10%, floop 0%). Three confounded hypotheses: (1) context noise — 21 behaviors diluted attention, (2) model too weak — Flash can't leverage guidance, (3) wrong content — generic heuristics don't help code reasoning. This run isolates each factor.
+**Goal:** Run 7 showed behaviors hurt performance (bare 10%, behaviors 0%). Three confounded hypotheses: (1) context noise — 21 heuristics diluted attention, (2) model too weak — Flash can't leverage guidance, (3) wrong content — generic heuristics don't help code reasoning. This run isolates each factor.
+**What was tested:** Prompt length dose-response — does adding ANY extra text to the system prompt hurt Flash? Floop binary was NOT used.
 
 ### Phase 1: Flash diagnostic (3 arms, ~$4)
 
@@ -255,7 +259,7 @@ Override arms use `floop_context_override` instead of real floop volume. The har
 - `flash_placebo`: none
 - `gemini_flash_floop` (Run 7): none
 
-**Interpretation:** Clear dose-response — more prompt text = worse performance. Bare (0 extra chars) > floop_3 (511 chars) > placebo (2025 chars) = floop_21 (~3K chars). The 3 focused behaviors partially recovered `pylint-6903` that the 21-behavior version lost, but still lost `django-16485`. The problem is fundamentally **prompt length for Flash** — any extra context dilutes its limited attention.
+**Interpretation:** Clear dose-response — more prompt text = worse performance. Bare (0 extra chars) > behaviors_3 (511 chars) > placebo (2025 chars) = behaviors_21 (~3K chars). The 3 focused heuristics partially recovered `pylint-6903` that the 21-heuristic version lost, but still lost `django-16485`. The problem is fundamentally **prompt length for Flash** — any extra context dilutes its limited attention.
 
 #### Phase 2: Pro model
 
@@ -270,7 +274,7 @@ Override arms use `floop_context_override` instead of real floop volume. The har
 
 **Major confound: timeout.** Pro timed out on 13/20 (bare) and 12/20 (floop_3) tasks at 300s. Pro is much slower per API call than Flash (~2-4x thinking time), so most tasks never completed the agent loop. The 300s timeout that works for Flash is too tight for Pro.
 
-**Despite the confound:** pro_floop_3 completed 1 more task (8 vs 7) and produced the only patch. The "locate the exact function" behavior consistently helps `pylint-6903` across both models — this is the one behavior with clear signal.
+**Despite the confound:** pro_behaviors_3 completed 1 more task (8 vs 7) and produced the only patch. The "locate the exact function" heuristic consistently helps `pylint-6903` across both models — this is the one behavior with clear signal.
 
 ### Analysis
 
@@ -278,24 +282,27 @@ Override arms use `floop_context_override` instead of real floop volume. The har
 
 1. **Prompt length matters for Flash.** Clear monotonic degradation: 0 chars (10%) > 511 chars (5%) > 2K chars (0%) > 3K chars (0%). Flash has limited attention capacity and any extra context competes with the bug description.
 
-2. **Focused behaviors > many behaviors.** 3 behaviors (5%) beat 21 behaviors (0%) on Flash. The "locate the exact function" behavior specifically fixed the `pylint-6903` failure mode it was designed for — across both Flash and Pro.
+2. **Focused heuristics > many heuristics.** 3 heuristics (5%) beat 21 heuristics (0%) on Flash. The "locate the exact function" heuristic specifically fixed the `pylint-6903` failure mode it was designed for — across both Flash and Pro.
 
 3. **Pro needs more time.** 300s timeout is insufficient for Gemini 2.5 Pro's thinking-heavy agent loop. 65% timeout rate makes the Pro comparison unreliable. Would need 600-900s timeout for meaningful Pro data.
 
-4. **One behavior has real signal.** `pylint-6903` was resolved by the focused behaviors on both Flash and Pro, but not by bare Pro or placebo. The "locate the exact function in the traceback" behavior is genuinely helpful for navigation-error bugs. But n=1 is not statistically significant.
+4. **One heuristic has real signal.** `pylint-6903` was resolved by the focused heuristics on both Flash and Pro, but not by bare Pro or placebo. The "locate the exact function in the traceback" heuristic is genuinely helpful for navigation-error bugs. But n=1 is not statistically significant.
 
-**What this means for floop:**
+**What this means for the benchmark:**
 
-The core finding is nuanced: behavioral guidance **can help** (pylint-6903 is proof), but the **injection cost** (extra tokens in context) can outweigh the benefit for weak models. Floop needs either:
-- Ultra-concise behaviors (single sentences, not paragraphs)
-- Smarter injection (only inject relevant behaviors per-task, not all)
+The core finding is nuanced: prompt-injected heuristics **can help** (pylint-6903 is proof), but the **injection cost** (extra tokens in context) can outweigh the benefit for weak models. The technique needs either:
+- Ultra-concise heuristics (single sentences, not paragraphs)
+- Smarter injection (only inject relevant heuristics per-task, not all)
 - Stronger models that can absorb extra context without attention loss
+
+**Note:** floop-the-binary was not used in this run. All "behaviors" were hand-written sentences in YAML configs.
 
 ## Run 8b: Pro re-run with 600s timeout (2026-03-01/02)
 
 **Goal:** Run 8 Phase 2 was invalidated by 65% timeout rate at 300s. Doubled timeout to 600s and bumped `API_TIMEOUT` from 60→90s per litellm call to give Pro enough time to complete agent loops.
+**What was tested:** Same 3 hand-written heuristics as Run 8, on a stronger model with more time. Floop binary NOT used.
 
-**Arms:** gemini_pro_bare, pro_floop_3 (same 3 focused behaviors as Run 8)
+**Arms:** gemini_pro_bare, pro_behaviors_3 (same 3 hand-written heuristics as Run 8)
 **Budget:** ~$26 (actual: $26.02)
 
 ### Results
@@ -340,7 +347,7 @@ The extra time helped Pro **produce patches** (0→7 for bare) but didn't reduce
 
 *patch produced before timeout
 
-**Observation:** The arms resolved completely different tasks. No overlap — bare got `django-11239` + `django-16082`, floop got `django-11999`. This is noise, not signal. With n=20 and 65% timeouts, the effective sample is ~7 tasks per arm — far too small for meaningful comparison.
+**Observation:** The arms resolved completely different tasks. No overlap — bare got `django-11239` + `django-16082`, behaviors got `django-11999`. This is noise, not signal. With n=20 and 65% timeouts, the effective sample is ~7 tasks per arm — far too small for meaningful comparison.
 
 ### Conclusions
 
@@ -348,7 +355,7 @@ The extra time helped Pro **produce patches** (0→7 for bare) but didn't reduce
 
 2. **Pro matches Flash on resolve rate.** Both Pro bare and Flash bare resolve 10% (2/20). Pro costs 10x more ($12.93 vs $1.20) for the same performance, suggesting Gemini 2.5 Pro doesn't bring meaningful capability gains for this agent harness + SWE-bench combo.
 
-3. **Floop result is inconclusive.** Pro floop resolved 1/20 (5%) vs bare's 2/20 (10%), but on completely different tasks. With 65% of tasks timing out, the comparison lacks statistical power. We cannot determine whether behaviors help or hurt Pro.
+3. **Behaviors result is inconclusive.** Pro behaviors resolved 1/20 (5%) vs bare's 2/20 (10%), but on completely different tasks. With 65% of tasks timing out, the comparison lacks statistical power. We cannot determine whether prompt-injected heuristics help or hurt Pro.
 
 4. **Experiment is budget-constrained.** At $26/run for Pro (40 tasks), we cannot afford the ~5 runs needed to reduce noise. Further Pro experiments are not cost-effective.
 
@@ -374,24 +381,25 @@ To make further progress, we'd need either:
 | 4 | train | gemini_flash_floop | 30 | $1.70 | WORKDIR bug, floop init bug |
 | 5 | train | gemini_flash_floop | 30 | $1.70 | 0 behaviors learned (prompt ignored) |
 | 6 | train | gemini_flash_floop | 30 | $1.43 | 1 behavior learned (hybrid harness) |
-| 7 | eval | bare + floop | 40 | $2.68 | 10% bare vs 0% floop resolved |
-| 8a | eval | flash_floop_3 | 20 | $1.46 | 5% — 3 behaviors partial recovery |
+| 7 | eval | bare + behaviors (prompt-injected) | 40 | $2.68 | 10% bare vs 0% behaviors resolved. Floop NOT used. |
+| 8a | eval | flash_behaviors_3 | 20 | $1.46 | 5% — 3 heuristics partial recovery. Floop NOT used. |
 | 8b | eval | flash_placebo | 20 | $1.41 | 0% — placebo text hurts too |
 | 8c | eval | gemini_pro_bare | 20 | $6.48 | 0% — 65% timeout rate at 300s |
-| 8d | eval | pro_floop_3 | 20 | $6.27 | 5% — behaviors help Pro on pylint-6903 |
+| 8d | eval | pro_behaviors_3 | 20 | $6.27 | 5% — heuristics help Pro on pylint-6903. Floop NOT used. |
 | 8b-bare | eval | gemini_pro_bare (600s) | 20 | $12.93 | 10% — same timeout rate, more patches |
-| 8b-floop | eval | pro_floop_3 (600s) | 20 | $13.09 | 5% — hit daily rate limit, re-ran next day |
+| 8b-behaviors | eval | pro_behaviors_3 (600s) | 20 | $13.09 | 5% — hit daily rate limit. Floop NOT used. |
 | 9-bare | eval | mswea_bare | 20 | $2.27 | mini-SWE-agent, 20% resolve |
-| 9-floop | eval | mswea_floop | 20 | $2.68 | mini-SWE-agent, 15% resolve (rate-limited) |
-| 10-floop | eval | mswea_floop (rerun) | 20 | $2.99 | Clean run, 35% resolve |
+| 9-behaviors | eval | mswea_floop (behaviors) | 20 | $2.68 | mini-SWE-agent, 15% resolve (rate-limited) |
+| 10-behaviors | eval | mswea_floop (behaviors rerun) | 20 | $2.99 | Clean run, 35% resolve. Floop NOT used. |
 | — | smoke (various) | mixed | ~10 | ~$1.00 | Debugging sessions |
 | **Total** | | | | **~$58.74** | |
 
-## Run 9: mini-SWE-agent A/B test (2026-03-03)
+## Run 9: mini-SWE-agent A/B test — prompt-injected heuristics (2026-03-03)
 
-**Goal:** Runs 7-8b capped at ~10% resolve rate with our homebrew `mini_swe` agent, too low for statistical power. mini-SWE-agent (SWE-agent's official lightweight successor, v2.2.6) scores ~60% on published benchmarks with Gemini 2.5 Flash. Switching to it should raise the baseline enough to detect floop's effect. Reuses the same 3 focused behaviors from Run 8 (shortest effective injection).
+**Goal:** Runs 7-8b capped at ~10% resolve rate with our homebrew `mini_swe` agent, too low for statistical power. mini-SWE-agent (SWE-agent's official lightweight successor, v2.2.6) scores ~60% on published benchmarks with Gemini 2.5 Flash. Switching to it should raise the baseline enough to detect the effect of prompt-injected heuristics. Reuses the same 3 hand-written heuristics from Run 8 (shortest effective injection).
+**What was tested:** Same 3 hand-written heuristics, new agent framework. Floop binary NOT used.
 
-**Arms:** mswea_bare vs mswea_floop (3 behaviors, ~100 extra tokens)
+**Arms:** mswea_bare vs mswea_floop (3 hand-written heuristics in system_template, ~100 extra tokens)
 **Agent:** mini-SWE-agent v2.2.6 with `swebench_xml.yaml` base config (XML action parsing, bash-only)
 **Model:** Gemini 2.5 Flash (temperature=0, drop_params=true)
 **Eval tasks:** 20 from `config/splits.json` eval split (SWE-bench Verified)
@@ -399,8 +407,8 @@ To make further progress, we'd need either:
 ### Setup
 
 - Installed mini-SWE-agent via `uv pip install mini-swe-agent`
-- Created `config/mswea_bare.yaml` (model config only) and `config/mswea_floop.yaml` (model + 3 behaviors in `agent.system_template`)
-- `system_template` fully replaces the base config's template (not merged), so floop config includes the full XML format instructions from `swebench_xml.yaml`
+- Created `config/mswea_bare.yaml` (model config only) and `config/mswea_floop.yaml` (model + 3 hand-written heuristics in `agent.system_template`)
+- `system_template` fully replaces the base config's template (not merged), so the behaviors config includes the full XML format instructions from `swebench_xml.yaml`
 - Created `scripts/run_mswea.py` wrapper: `run`, `import-results`, `evaluate` subcommands bridging mini-SWE-agent output to floop-bench's DB/JSONL/eval pipeline
 - Updated `analysis/analyze.py` to auto-detect any `*_bare` / `*_floop` arm pairs for paired comparisons (was previously hardcoded for haiku arms)
 
@@ -417,18 +425,18 @@ To make further progress, we'd need either:
 
 ### Major confound: Gemini TPM rate limits
 
-**The floop arm results are invalid for A/B comparison.** The bare arm ran first with fresh Gemini quota and 14/20 tasks produced patches. The floop arm ran afterward and hit the 1M tokens-per-minute (TPM) input rate limit — 12/20 tasks exited with `RateLimitError` before producing any output.
+**The behaviors arm results are invalid for A/B comparison.** The bare arm ran first with fresh Gemini quota and 14/20 tasks produced patches. The behaviors arm ran afterward and hit the 1M tokens-per-minute (TPM) input rate limit — 12/20 tasks exited with `RateLimitError` before producing any output.
 
-| Exit status | Bare | Floop |
-|-------------|------|-------|
+| Exit status | Bare | Behaviors |
+|-------------|------|-----------|
 | Submitted (produced patch) | 14 | 5 |
 | RateLimitError (no output) | 2 | 12 |
 | IndexError (empty Gemini response) | 1 | 2 |
 | LimitsExceeded (cost limit) | 3 | 1 |
 
-**All 4 bare-resolved instances were rate-limited in the floop arm** — floop never got to attempt them. The "Δ rate: -5.0%" in the analysis output is meaningless because the arms attempted different subsets of tasks.
+**All 4 bare-resolved instances were rate-limited in the behaviors arm** — it never got to attempt them. The "Δ rate: -5.0%" in the analysis output is meaningless because the arms attempted different subsets of tasks.
 
-On instances that both arms actually completed (produced patches), floop was **3/5 = 60%** vs bare's **4/14 = 29%**. But these are different tasks, so this comparison is also unreliable.
+On instances that both arms actually completed (produced patches), behaviors arm was **3/5 = 60%** vs bare's **4/14 = 29%**. But these are different tasks, so this comparison is also unreliable.
 
 ### Statistical analysis (for the record, not meaningful)
 
@@ -449,13 +457,13 @@ Zero overlap in resolved tasks. p=1.0 — no detectable difference, but this is 
 ### What went right
 
 1. **mini-SWE-agent works.** The integration pipeline (`run_mswea.py`) successfully bridges mini-SWE-agent's output format to floop-bench's eval/analysis pipeline.
-2. **Bare arm baseline: 20% (4/20).** This is 2x our homebrew agent's 10% and closer to published results. With a functioning baseline, floop has headroom to show improvement.
+2. **Bare arm baseline: 20% (4/20).** This is 2x our homebrew agent's 10% and closer to published results. With a functioning baseline, prompt-injected heuristics have headroom to show improvement.
 3. **Per-task cost: $0.11-0.13.** Very affordable — a clean 20-task arm costs ~$2.50.
 4. **Analysis pipeline generalizes.** Auto-detected `mswea_bare`/`mswea_floop` pair without code changes.
 
 ### What went wrong
 
-1. **Gemini TPM rate limit (1M input tokens/min)** destroyed the floop arm. Running 20 tasks sequentially with 1 worker still exceeded the per-minute budget as tasks ran faster than the minute cooldown.
+1. **Gemini TPM rate limit (1M input tokens/min)** destroyed the behaviors arm. Running 20 tasks sequentially with 1 worker still exceeded the per-minute budget as tasks ran faster than the minute cooldown.
 2. **Sequential arm execution** meant arms faced different rate limit conditions. This is the fundamental flaw.
 3. **IndexError (empty Gemini choices[])** — a known Gemini issue with the XML action format. Affects both arms (~5-10% of tasks).
 
@@ -467,9 +475,10 @@ To get a valid A/B comparison:
 3. **Spread over time** — run with longer delays between tasks to stay under the 1M TPM/min ceiling
 4. **Or use a different provider** — Anthropic Claude or OpenAI models have higher rate limits on paid tier
 
-## Run 10: mini-SWE-agent A/B retest — clean run (2026-03-07)
+## Run 10: mini-SWE-agent A/B retest — clean behaviors arm run (2026-03-07)
 
-**Goal:** Re-run the floop arm that was invalidated in Run 9 by Gemini TPM rate limits. This time, both arms ran on separate days with fresh quota, and mini-SWE-agent's built-in retry with backoff handled rate limits mid-run instead of crashing.
+**Goal:** Re-run the behaviors arm that was invalidated in Run 9 by Gemini TPM rate limits. This time, both arms ran on separate days with fresh quota, and mini-SWE-agent's built-in retry with backoff handled rate limits mid-run instead of crashing.
+**What was tested:** Same 3 hand-written heuristics as Runs 8-9. Floop binary NOT used — behaviors were hardcoded in `config/mswea_floop.yaml`.
 
 **Arms:** mswea_bare (from Run 9, unchanged) vs mswea_floop (re-run with retries)
 **Agent:** mini-SWE-agent v2.2.6 with `swebench_xml.yaml` base config
@@ -528,34 +537,67 @@ Concordance table (n=20):
 
 ### Analysis
 
-**This is the strongest floop signal across all 10 runs.**
+**Strongest signal from hand-written behaviors across all 10 runs.**
 
-1. **Floop resolved nearly 2x more tasks** — 7/20 (35%) vs 4/20 (20%), a +15 percentage point improvement. Cohen's h=0.34 is a small-to-medium effect size.
+1. **Behaviors arm resolved nearly 2x more tasks** — 7/20 (35%) vs 4/20 (20%), a +15 percentage point improvement. Cohen's h=0.34 is a small-to-medium effect size.
 
-2. **Floop won the head-to-head** — 5 tasks solved only by floop vs 2 solved only by bare. The 2 bare-only wins (`django-15037`, `django-15930`) were tasks where floop hit rate limits/cost limits and never completed, so they may not represent a genuine floop disadvantage.
+2. **Behaviors arm won the head-to-head** — 5 tasks solved only by behaviors vs 2 solved only by bare. The 2 bare-only wins (`django-15037`, `django-15930`) were tasks where the behaviors arm hit rate limits/cost limits and never completed, so they may not represent a genuine disadvantage.
 
 3. **Not statistically significant** — p=0.45 with n=20 and wide overlapping CIs ([5%,40%] vs [15%,55%]). McNemar's test requires larger samples or a larger effect to reach significance.
 
-4. **Remaining confound** — sympy tasks and 2 bare-only tasks still had rate limit asymmetries. However, the floop arm submitted 13/20 patches (comparable to bare's 14/20), so this is much less confounded than Run 9.
+4. **Remaining confound** — sympy tasks and 2 bare-only tasks still had rate limit asymmetries. However, the behaviors arm submitted 13/20 patches (comparable to bare's 14/20), so this is much less confounded than Run 9.
 
-5. **Cost efficiency** — floop costs less per resolved task ($0.43 vs $0.57) despite costing more total ($2.99 vs $2.27).
+5. **Cost efficiency** — behaviors arm costs less per resolved task ($0.43 vs $0.57) despite costing more total ($2.99 vs $2.27).
 
 ### What the 3 behaviors did
 
-The 3 focused behaviors injected into the floop arm's system prompt (~100 tokens):
+The 3 hand-written heuristics injected into the behaviors arm's system prompt (~100 tokens):
 1. "Locate the exact function mentioned in the traceback before editing any code"
 2. "Make the smallest possible change — a one-line fix is better than rewriting a block"
 3. "After editing, verify your change by running: python -c 'import <module>'"
 
 These consistently helped on:
-- **Navigation-error bugs** (astropy-14096, django-11749, django-16082) — the "locate exact function" behavior directed the agent to the right file/function before editing
-- **`pylint-6903`** — resolved by both arms, but this was the one task behaviors consistently helped across Runs 8-10 on both Flash and Pro
+- **Navigation-error bugs** (astropy-14096, django-11749, django-16082) — the "locate exact function" heuristic directed the agent to the right file/function before editing
+- **`pylint-6903`** — resolved by both arms, but this was the one task these behaviors consistently helped across Runs 8-10 on both Flash and Pro
+
+### What we actually tested
+
+**Important:** Runs 7-10 tested **prompt engineering** — whether adding hand-written debugging heuristics to a system prompt improves agent performance. The floop binary was never invoked. No floop store was used. No `floop prompt` command was run. The behaviors were written by a human, hardcoded into a YAML config file (`config/mswea_floop.yaml`), and injected as static text.
+
+This is a valid and interesting finding (prompt-injected heuristics help), but it is **not a test of floop-the-product**. Floop's value proposition — learned behaviors stored in a graph, retrieved by spreading activation, injected via `floop prompt` — was not tested in any run prior to Run 11.
 
 ### Conclusion
 
-Run 10 provides suggestive but not definitive evidence that focused floop behaviors improve agent performance. The direction is consistently positive (+15pp), the mechanism is plausible (navigation behaviors help the agent find the right code), and the per-task wins are real (5 unique floop wins vs 2 unique bare wins). However, n=20 is insufficient for statistical significance at this effect size.
+Run 10 provides suggestive but not definitive evidence that focused prompt-injected debugging heuristics improve agent performance. The direction is consistently positive (+15pp), the mechanism is plausible (navigation heuristics help the agent find the right code), and the per-task wins are real (5 unique behaviors-arm wins vs 2 unique bare wins). However, n=20 is insufficient for statistical significance at this effect size.
 
 To confirm this result would require:
 - **Larger n** — ~80 tasks per arm for 80% power to detect a 15pp difference
 - **Cleaner rate limit management** — use API with higher quotas or interleave arms
 - **Multiple seeds** — run with temperature>0 and multiple seeds to reduce variance
+- **Actually test floop** — Run 11 will be the first run using the floop binary inside Docker containers
+
+## Run 11: floop-in-container A/B test (2026-03-07)
+
+**Goal:** First run that actually tests floop-the-product. Previous runs (7-10) tested hand-written heuristics hardcoded in YAML configs. This run installs the floop binary inside Docker containers, mounts a real floop store, and has the agent call `floop prompt` to generate behavior text.
+
+**What is tested:** Does floop (the tool, not hand-written sentences) improve agent performance?
+
+**Versions:**
+- floop: v0.11.8
+- mini-SWE-agent: v2.2.6
+- Model: Gemini 2.5 Flash (temperature=0)
+
+**Arms:** mswea_bare vs mswea_floop (floop binary in container, behaviors from `.floop` store)
+**Eval tasks:** 80 from `config/splits.json` (expanded from 20, includes original 20 for continuity)
+**Rate limit mitigation:** 60s delay between tasks (`--delay 60`)
+
+### Setup
+
+- floop binary installed inside each Docker container via `run.env_startup_command` (curl from GitHub releases)
+- floop store (`.floop/` with 3 bug-fix behaviors) mounted read-only at `/floop-store` via `environment.run_args`
+- Agent instructed to run `floop prompt --root /floop-store --task bug-fix` as first command
+- Bare arm is unchanged — no floop, no behaviors, no extra prompt text
+
+### Results
+
+*Pending — run not yet started.*

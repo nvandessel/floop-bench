@@ -20,6 +20,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import click
@@ -89,6 +90,50 @@ def cli():
     pass
 
 
+def _build_mswea_cmd(
+    arm: str,
+    config_path: Path,
+    output_dir: Path,
+    filter_re: str,
+    cost_limit: float,
+    workers: int,
+    container_rt: str,
+) -> list[str]:
+    """Build the mini-extra swebench command."""
+    cmd = [
+        "mini-extra", "swebench",
+        "--subset", "verified",
+        "--split", "test",
+        "--filter", filter_re,
+        "-c", str(SWEBENCH_BASE_CONFIG),
+        "-c", str(config_path),
+        "-c", f"agent.cost_limit={cost_limit}",
+        "-o", str(output_dir),
+        "--workers", str(workers),
+        "--redo-existing",
+    ]
+
+    # Set container runtime if not docker (mini-SWE-agent defaults to docker)
+    if container_rt != "docker":
+        cmd.extend(["-c", f"environment.executable={container_rt}"])
+
+    # Mount floop binary + store for floop arms
+    # floop --root expects a project dir containing .floop/ subdirectory
+    if "floop" in arm:
+        floop_store = PROJECT_ROOT / ".floop"
+        floop_bin = shutil.which("floop")
+        if floop_store.exists() and floop_bin:
+            floop_bin = str(Path(floop_bin).resolve())  # resolve symlinks
+            store_mount = f"{floop_store}:/floop-store/.floop:ro"
+            bin_mount = f"{floop_bin}:/usr/local/bin/floop:ro"
+            cmd.extend(["-c", f'environment.run_args=["--rm", "-v", "{store_mount}", "-v", "{bin_mount}"]'])
+        elif not floop_bin:
+            console.print("[red]floop binary not found on host — cannot mount into container[/red]")
+            sys.exit(1)
+
+    return cmd
+
+
 @cli.command()
 @click.option("--arm", required=True, help="Arm name (matches config/<arm>.yaml)")
 @click.option("--workers", default=1, help="Parallel workers")
@@ -98,7 +143,8 @@ def cli():
     help="Comma-separated instance IDs (default: all eval IDs from splits.json)",
 )
 @click.option("--cost-limit", default=3.0, help="Per-instance cost limit in USD")
-def run(arm: str, workers: int, filter_ids: str | None, cost_limit: float):
+@click.option("--delay", default=0, type=int, help="Seconds to sleep between tasks (rate limit mitigation)")
+def run(arm: str, workers: int, filter_ids: str | None, cost_limit: float, delay: int):
     """Run mini-SWE-agent on eval tasks for an arm."""
     container_rt = _find_container_runtime()
 
@@ -107,7 +153,6 @@ def run(arm: str, workers: int, filter_ids: str | None, cost_limit: float):
     else:
         ids = _load_eval_ids()
 
-    filter_re = _build_filter_regex(ids)
     # Try config/<arm>.yaml first, then config/mswea_<arm>.yaml for backwards compat
     config_path = CONFIG_DIR / f"{arm}.yaml"
     if not config_path.exists():
@@ -120,30 +165,34 @@ def run(arm: str, workers: int, filter_ids: str | None, cost_limit: float):
     console.print(f"  Output: {output_dir}")
     console.print(f"  Container runtime: {container_rt}")
     console.print(f"  Workers: {workers}")
+    if delay > 0:
+        console.print(f"  Delay: {delay}s between tasks")
 
-    cmd = [
-        "mini-extra", "swebench",
-        "--subset", "verified",
-        "--split", "test",
-        "--filter", filter_re,
-        "-c", str(SWEBENCH_BASE_CONFIG),
-        "-c", str(config_path),
-        "-c", f"agent.cost_limit={cost_limit}",
-        "-o", str(output_dir),
-        "--workers", str(workers),
-    ]
+    if delay > 0:
+        # Run tasks one at a time with sleep between each
+        for i, instance_id in enumerate(ids):
+            if i > 0:
+                console.print(f"[dim]Sleeping {delay}s (rate limit mitigation)...[/dim]")
+                time.sleep(delay)
 
-    # Set container runtime if not docker (mini-SWE-agent defaults to docker)
-    if container_rt != "docker":
-        cmd.extend(["-c", f"environment.executable={container_rt}"])
+            console.print(f"\n[cyan]Task {i+1}/{len(ids)}: {instance_id}[/cyan]")
+            filter_re = _build_filter_regex([instance_id])
+            cmd = _build_mswea_cmd(arm, config_path, output_dir, filter_re, cost_limit, 1, container_rt)
+            result = subprocess.run(cmd, cwd=str(PROJECT_ROOT))
 
-    console.print(f"\n  Command: {' '.join(cmd[:6])} ... [truncated]")
+            if result.returncode != 0:
+                console.print(f"[yellow]Task {instance_id} exited with code {result.returncode}, continuing...[/yellow]")
+    else:
+        # Batch mode: submit all tasks at once
+        filter_re = _build_filter_regex(ids)
+        cmd = _build_mswea_cmd(arm, config_path, output_dir, filter_re, cost_limit, workers, container_rt)
+        console.print(f"\n  Command: {' '.join(cmd[:6])} ... [truncated]")
 
-    result = subprocess.run(cmd, cwd=str(PROJECT_ROOT))
+        result = subprocess.run(cmd, cwd=str(PROJECT_ROOT))
 
-    if result.returncode != 0:
-        console.print(f"[red]mini-SWE-agent exited with code {result.returncode}[/red]")
-        sys.exit(result.returncode)
+        if result.returncode != 0:
+            console.print(f"[red]mini-SWE-agent exited with code {result.returncode}[/red]")
+            sys.exit(result.returncode)
 
     console.print(f"[green]Run complete for arm={arm}[/green]")
     console.print(f"Output at: {output_dir}")
@@ -302,27 +351,19 @@ def evaluate(arm: str | None, max_workers: int):
 def smoke(instance: str, config_name: str):
     """Run a single-task smoke test to validate setup."""
     container_rt = _find_container_runtime()
+    # Resolve config name: try exact, then with mswea_ prefix
     config_path = CONFIG_DIR / f"{config_name}.yaml"
+    if not config_path.exists():
+        config_path = CONFIG_DIR / f"mswea_{config_name}.yaml"
     output_dir = MSWEA_OUTPUT_DIR / "smoke"
     output_dir.mkdir(parents=True, exist_ok=True)
 
     console.print(f"[cyan]Smoke test: {instance}[/cyan]")
+    console.print(f"  Config: {config_path}")
     console.print(f"  Container runtime: {container_rt}")
 
-    cmd = [
-        "mini-extra", "swebench",
-        "--subset", "verified",
-        "--split", "test",
-        "--filter", f"^{re.escape(instance)}$",
-        "-c", str(SWEBENCH_BASE_CONFIG),
-        "-c", str(config_path),
-        "-c", "agent.cost_limit=1.0",
-        "-o", str(output_dir),
-        "--workers", "1",
-    ]
-
-    if container_rt != "docker":
-        cmd.extend(["-c", f"environment.executable={container_rt}"])
+    filter_re = _build_filter_regex([instance])
+    cmd = _build_mswea_cmd(config_name, config_path, output_dir, filter_re, 1.0, 1, container_rt)
 
     result = subprocess.run(cmd, cwd=str(PROJECT_ROOT))
 

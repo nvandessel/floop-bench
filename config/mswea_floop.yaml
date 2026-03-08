@@ -1,10 +1,16 @@
-# mini-SWE-agent config: Gemini 2.5 Flash + 3 focused floop behaviors
-# Behaviors injected via system_template override.
-# Must include the XML format instructions from swebench_xml.yaml base
-# since system_template is fully replaced, not merged.
+# mini-SWE-agent config: Gemini 2.5 Flash + floop-in-container
 #
-# Why top-3 (not 21): Run 8 showed dose-response on Flash — more tokens = worse.
-# ~100 extra tokens is the lightest injection that showed signal.
+# Run 11: First run using floop-the-binary inside Docker containers.
+# floop binary mounted from host (read-only).
+# floop store mounted from host (read-only), copied to writable location by agent.
+# Agent calls `floop prompt` as its first command to load behaviors.
+#
+# Volume mounts are added dynamically by run_mswea.py:
+#   - floop binary: /home/linuxbrew/.linuxbrew/Caskroom/floop/0.11.8/floop → /usr/local/bin/floop:ro
+#   - floop store: .floop/ → /floop-store/.floop:ro
+#
+# Previous runs (7-10) used hand-written heuristics hardcoded in this file.
+# This run uses the actual floop tool to generate behavior text.
 
 model:
   model_name: "gemini/gemini-2.5-flash"
@@ -29,8 +35,14 @@ agent:
 
     Failure to follow these rules will cause your response to be rejected.
 
-    ## Learned Behaviors
-    Apply these learned behaviors when relevant:
-    - [behavior] [bug-fix, navigation] Locate the exact function mentioned in the traceback before editing any code — read the error to identify the right file and function.
-    - [behavior] [bug-fix, minimal-diff] Make the smallest possible change — a one-line fix is better than rewriting a block. Never copy-paste code between functions.
-    - [behavior] [bug-fix, verification] After editing, verify your change by running: python -c 'import <module>'
+    ## Setup
+    Before starting on the task, run this command FIRST to load relevant debugging behaviors:
+    mkdir -p /tmp/floop-store && cp -r /floop-store/.floop /tmp/floop-store/.floop && floop prompt --root /tmp/floop-store --task bug-fix
+
+    Read and apply any behaviors shown in the output when working on the task.
+
+    ## How to Submit Your Fix
+    When done, submit with these steps (each as a SEPARATE command):
+    1. Create patch: git diff -- path/to/modified_file.py > patch.txt
+    2. Submit: echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt
+    Do NOT skip submission — your fix is lost if you don't submit.
