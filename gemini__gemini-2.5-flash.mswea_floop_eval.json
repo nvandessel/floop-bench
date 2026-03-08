@@ -1,17 +1,23 @@
 {
     "total_instances": 500,
     "submitted_instances": 20,
-    "completed_instances": 5,
-    "resolved_instances": 3,
-    "unresolved_instances": 2,
-    "empty_patch_instances": 15,
-    "error_instances": 0,
+    "completed_instances": 11,
+    "resolved_instances": 6,
+    "unresolved_instances": 5,
+    "empty_patch_instances": 7,
+    "error_instances": 2,
     "completed_ids": [
         "astropy__astropy-14096",
-        "django__django-11551",
+        "django__django-11239",
+        "django__django-11749",
         "django__django-11999",
         "django__django-13012",
-        "django__django-14053"
+        "django__django-13809",
+        "django__django-14792",
+        "django__django-16082",
+        "django__django-16485",
+        "django__django-17084",
+        "pylint-dev__pylint-6903"
     ],
     "incomplete_ids": [
         "astropy__astropy-12907",
@@ -496,19 +502,11 @@
         "sympy__sympy-24661"
     ],
     "empty_patch_ids": [
-        "django__django-11239",
-        "django__django-11749",
-        "django__django-13809",
-        "django__django-14792",
+        "django__django-11551",
+        "django__django-14053",
         "django__django-15037",
         "django__django-15930",
-        "django__django-16082",
-        "django__django-16485",
-        "django__django-17084",
-        "pylint-dev__pylint-6903",
         "scikit-learn__scikit-learn-14710",
-        "sphinx-doc__sphinx-7440",
-        "sphinx-doc__sphinx-7985",
         "sympy__sympy-13551",
         "sympy__sympy-20916"
     ],
@@ -536,13 +534,22 @@
     ],
     "resolved_ids": [
         "astropy__astropy-14096",
-        "django__django-11551",
-        "django__django-13012"
+        "django__django-11749",
+        "django__django-13012",
+        "django__django-13809",
+        "django__django-16082",
+        "pylint-dev__pylint-6903"
     ],
     "unresolved_ids": [
+        "django__django-11239",
         "django__django-11999",
-        "django__django-14053"
+        "django__django-14792",
+        "django__django-16485",
+        "django__django-17084"
     ],
-    "error_ids": [],
+    "error_ids": [
+        "sphinx-doc__sphinx-7440",
+        "sphinx-doc__sphinx-7985"
+    ],
     "schema_version": 2
 }
