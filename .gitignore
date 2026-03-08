@@ -9,6 +9,7 @@ results/results.db
 results/charts/
 results/transcripts/
 results/eval_output/
+results/mswea/
 work/
 logs/
 .claude/

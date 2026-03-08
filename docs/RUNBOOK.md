@@ -381,5 +381,87 @@ To make further progress, we'd need either:
 | 8d | eval | pro_floop_3 | 20 | $6.27 | 5% — behaviors help Pro on pylint-6903 |
 | 8b-bare | eval | gemini_pro_bare (600s) | 20 | $12.93 | 10% — same timeout rate, more patches |
 | 8b-floop | eval | pro_floop_3 (600s) | 20 | $13.09 | 5% — hit daily rate limit, re-ran next day |
+| 9-bare | eval | mswea_bare | 20 | $2.27 | mini-SWE-agent, 20% resolve |
+| 9-floop | eval | mswea_floop | 20 | $2.68 | mini-SWE-agent, 15% resolve (rate-limited) |
 | — | smoke (various) | mixed | ~10 | ~$1.00 | Debugging sessions |
-| **Total** | | | | **~$50.80** | |
+| **Total** | | | | **~$55.75** | |
+
+## Run 9: mini-SWE-agent A/B test (2026-03-03)
+
+**Goal:** Runs 7-8b capped at ~10% resolve rate with our homebrew `mini_swe` agent, too low for statistical power. mini-SWE-agent (SWE-agent's official lightweight successor, v2.2.6) scores ~60% on published benchmarks with Gemini 2.5 Flash. Switching to it should raise the baseline enough to detect floop's effect. Reuses the same 3 focused behaviors from Run 8 (shortest effective injection).
+
+**Arms:** mswea_bare vs mswea_floop (3 behaviors, ~100 extra tokens)
+**Agent:** mini-SWE-agent v2.2.6 with `swebench_xml.yaml` base config (XML action parsing, bash-only)
+**Model:** Gemini 2.5 Flash (temperature=0, drop_params=true)
+**Eval tasks:** 20 from `config/splits.json` eval split (SWE-bench Verified)
+
+### Setup
+
+- Installed mini-SWE-agent via `uv pip install mini-swe-agent`
+- Created `config/mswea_bare.yaml` (model config only) and `config/mswea_floop.yaml` (model + 3 behaviors in `agent.system_template`)
+- `system_template` fully replaces the base config's template (not merged), so floop config includes the full XML format instructions from `swebench_xml.yaml`
+- Created `scripts/run_mswea.py` wrapper: `run`, `import-results`, `evaluate` subcommands bridging mini-SWE-agent output to floop-bench's DB/JSONL/eval pipeline
+- Updated `analysis/analyze.py` to auto-detect any `*_bare` / `*_floop` arm pairs for paired comparisons (was previously hardcoded for haiku arms)
+
+### Results
+
+| Arm | Patches | Resolved | Rate | Submitted | RateLimitError | IndexError | LimitsExceeded | Cost |
+|-----|---------|----------|------|-----------|----------------|------------|----------------|------|
+| `mswea_bare` | 14/20 | **4/20** | **20%** | 14 | 2 | 1 | 3 | $2.27 |
+| `mswea_floop` | 5/20 | **3/20** | **15%** | 5 | 12 | 2 | 1 | $2.68 |
+
+**Resolved tasks:**
+- `mswea_bare`: `django-13809`, `django-15037`, `django-15930`, `pylint-6903`
+- `mswea_floop`: `astropy-14096`, `django-11551`, `django-13012`
+
+### Major confound: Gemini TPM rate limits
+
+**The floop arm results are invalid for A/B comparison.** The bare arm ran first with fresh Gemini quota and 14/20 tasks produced patches. The floop arm ran afterward and hit the 1M tokens-per-minute (TPM) input rate limit — 12/20 tasks exited with `RateLimitError` before producing any output.
+
+| Exit status | Bare | Floop |
+|-------------|------|-------|
+| Submitted (produced patch) | 14 | 5 |
+| RateLimitError (no output) | 2 | 12 |
+| IndexError (empty Gemini response) | 1 | 2 |
+| LimitsExceeded (cost limit) | 3 | 1 |
+
+**All 4 bare-resolved instances were rate-limited in the floop arm** — floop never got to attempt them. The "Δ rate: -5.0%" in the analysis output is meaningless because the arms attempted different subsets of tasks.
+
+On instances that both arms actually completed (produced patches), floop was **3/5 = 60%** vs bare's **4/14 = 29%**. But these are different tasks, so this comparison is also unreliable.
+
+### Statistical analysis (for the record, not meaningful)
+
+```
+McNemar's test (floop vs bare, n=20):
+  chi2 = 0.000, p = 1.0000
+  Cohen's h = -0.132
+
+Concordance table (n=20):
+  Both solved:  0
+  Only bare:    4
+  Only floop:   3
+  Neither:      13
+```
+
+Zero overlap in resolved tasks. p=1.0 — no detectable difference, but this is because the arms effectively ran on different task subsets.
+
+### What went right
+
+1. **mini-SWE-agent works.** The integration pipeline (`run_mswea.py`) successfully bridges mini-SWE-agent's output format to floop-bench's eval/analysis pipeline.
+2. **Bare arm baseline: 20% (4/20).** This is 2x our homebrew agent's 10% and closer to published results. With a functioning baseline, floop has headroom to show improvement.
+3. **Per-task cost: $0.11-0.13.** Very affordable — a clean 20-task arm costs ~$2.50.
+4. **Analysis pipeline generalizes.** Auto-detected `mswea_bare`/`mswea_floop` pair without code changes.
+
+### What went wrong
+
+1. **Gemini TPM rate limit (1M input tokens/min)** destroyed the floop arm. Running 20 tasks sequentially with 1 worker still exceeded the per-minute budget as tasks ran faster than the minute cooldown.
+2. **Sequential arm execution** meant arms faced different rate limit conditions. This is the fundamental flaw.
+3. **IndexError (empty Gemini choices[])** — a known Gemini issue with the XML action format. Affects both arms (~5-10% of tasks).
+
+### Lessons for Run 10
+
+To get a valid A/B comparison:
+1. **Interleave arms** — run tasks in shuffled order (bare-A, floop-A, bare-B, floop-B, ...) so both arms face identical rate limit conditions
+2. **Add retry with backoff** — if a task exits with RateLimitError, wait 60s and retry (up to 3 attempts)
+3. **Spread over time** — run with longer delays between tasks to stay under the 1M TPM/min ceiling
+4. **Or use a different provider** — Anthropic Claude or OpenAI models have higher rate limits on paid tier
