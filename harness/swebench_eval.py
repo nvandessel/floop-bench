@@ -101,28 +101,51 @@ def import_swebench_results(arm: str, run_id: str) -> int:
 
     console.print(f"[cyan]Importing results from: {report_path}[/cyan]")
 
-    with open(report_path) as f:
-        report = json.load(f)
-
-    # Log structure for debugging
-    top_keys = list(report.keys())[:10]
-    console.print(f"  Report keys: {top_keys} ({len(report)} total entries)")
+    # First try per-instance reports (more reliable than top-level summary)
+    eval_dir = report_path.parent
+    per_instance_results = {}
+    for model_dir in eval_dir.iterdir():
+        if not model_dir.is_dir():
+            continue
+        for instance_dir in model_dir.iterdir():
+            if not instance_dir.is_dir():
+                continue
+            instance_report = instance_dir / "report.json"
+            if instance_report.exists():
+                with open(instance_report) as f:
+                    inst_data = json.load(f)
+                for inst_id, result in inst_data.items():
+                    if isinstance(result, dict) and "resolved" in result:
+                        per_instance_results[inst_id] = result["resolved"]
 
     count = 0
-    # SWE-bench report format: dict of instance_id -> {"resolved": bool, ...}
-    # or {"resolved": [...], "unresolved": [...]}
-    if "resolved" in report and isinstance(report["resolved"], list):
-        for instance_id in report.get("resolved", []):
-            update_resolved(instance_id, arm, True)
-            count += 1
-        for instance_id in report.get("unresolved", []):
-            update_resolved(instance_id, arm, False)
+    if per_instance_results:
+        console.print(f"  Found {len(per_instance_results)} per-instance reports")
+        for instance_id, resolved in sorted(per_instance_results.items()):
+            update_resolved(instance_id, arm, resolved)
             count += 1
     else:
-        for instance_id, result in report.items():
-            if isinstance(result, dict) and "resolved" in result:
-                update_resolved(instance_id, arm, result["resolved"])
+        # Fall back to top-level report
+        with open(report_path) as f:
+            report = json.load(f)
+
+        top_keys = list(report.keys())[:10]
+        console.print(f"  Report keys: {top_keys} ({len(report)} total entries)")
+
+        # SWE-bench report format: dict of instance_id -> {"resolved": bool, ...}
+        # or {"resolved": [...], "unresolved": [...]}
+        if "resolved" in report and isinstance(report["resolved"], list):
+            for instance_id in report.get("resolved", []):
+                update_resolved(instance_id, arm, True)
                 count += 1
+            for instance_id in report.get("unresolved", []):
+                update_resolved(instance_id, arm, False)
+                count += 1
+        else:
+            for instance_id, result in report.items():
+                if isinstance(result, dict) and "resolved" in result:
+                    update_resolved(instance_id, arm, result["resolved"])
+                    count += 1
 
     if count == 0:
         console.print(
