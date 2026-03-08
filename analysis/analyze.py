@@ -132,14 +132,57 @@ def analyze():
 
     console.print(table)
 
-    # Gap closure
+    # Paired comparisons for all bare/floop arm pairs
+    # Detect pairs: *_bare vs *_floop
+    arm_names = set(rates.keys())
+    bare_arms = {a for a in arm_names if a.endswith("_bare")}
+    for bare_arm in sorted(bare_arms):
+        prefix = bare_arm.rsplit("_bare", 1)[0]
+        floop_arm = f"{prefix}_floop"
+        if floop_arm not in rates:
+            continue
+
+        console.print()
+        console.print(f"[bold]Paired Comparison: {floop_arm} vs {bare_arm}[/bold]")
+        console.print(f"  Bare rate:   {rates[bare_arm]:.1%}")
+        console.print(f"  Floop rate:  {rates[floop_arm]:.1%}")
+        console.print(f"  Δ rate:      {rates[floop_arm] - rates[bare_arm]:+.1%}")
+
+        # McNemar's test
+        bare_runs = {r["instance_id"]: r for r in get_runs(bare_arm)}
+        floop_runs = {r["instance_id"]: r for r in get_runs(floop_arm)}
+        common = set(bare_runs) & set(floop_runs)
+
+        if common:
+            bare_outcomes = [bool(bare_runs[tid].get("resolved")) for tid in sorted(common)]
+            floop_outcomes = [bool(floop_runs[tid].get("resolved")) for tid in sorted(common)]
+            chi2, p_val = mcnemar_test(floop_outcomes, bare_outcomes)
+
+            console.print(f"\n  McNemar's test (floop vs bare, n={len(common)}):")
+            console.print(f"    chi2 = {chi2:.3f}, p = {p_val:.4f}")
+
+            h = cohens_h(rates[floop_arm], rates[bare_arm])
+            console.print(f"    Cohen's h = {h:.3f}")
+
+            # Show per-instance concordance
+            both_solved = sum(a and b for a, b in zip(bare_outcomes, floop_outcomes))
+            only_bare = sum(a and not b for a, b in zip(bare_outcomes, floop_outcomes))
+            only_floop = sum(not a and b for a, b in zip(bare_outcomes, floop_outcomes))
+            neither = sum(not a and not b for a, b in zip(bare_outcomes, floop_outcomes))
+            console.print(f"\n  Concordance table (n={len(common)}):")
+            console.print(f"    Both solved:  {both_solved}")
+            console.print(f"    Only bare:    {only_bare}")
+            console.print(f"    Only floop:   {only_floop}")
+            console.print(f"    Neither:      {neither}")
+
+    # Gap closure (legacy: haiku with sonnet ceiling)
     if "sonnet_bare" in rates and "haiku_bare" in rates and "haiku_floop" in rates:
         gap_closure = compute_gap_closure(
             rates["sonnet_bare"], rates["haiku_bare"], rates["haiku_floop"]
         )
 
         console.print()
-        console.print("[bold]Gap Closure Analysis[/bold]")
+        console.print("[bold]Gap Closure (Haiku → Sonnet)[/bold]")
         console.print(f"  Sonnet bare:  {rates['sonnet_bare']:.1%}")
         console.print(f"  Haiku bare:   {rates['haiku_bare']:.1%}")
         console.print(f"  Haiku floop:  {rates['haiku_floop']:.1%}")
@@ -148,22 +191,6 @@ def analyze():
             console.print(f"  [bold cyan]Gap closure: {gap_closure:.1%}[/bold cyan]")
         else:
             console.print("  [yellow]No gap to close (Haiku >= Sonnet)[/yellow]")
-
-        # McNemar's test: haiku_floop vs haiku_bare
-        haiku_runs = {r["instance_id"]: r for r in get_runs("haiku_bare")}
-        floop_runs = {r["instance_id"]: r for r in get_runs("haiku_floop")}
-        common = set(haiku_runs) & set(floop_runs)
-
-        if common:
-            haiku_outcomes = [bool(haiku_runs[tid].get("resolved")) for tid in sorted(common)]
-            floop_outcomes = [bool(floop_runs[tid].get("resolved")) for tid in sorted(common)]
-            chi2, p_val = mcnemar_test(floop_outcomes, haiku_outcomes)
-
-            console.print(f"\n  McNemar's test (floop vs bare):")
-            console.print(f"    chi2 = {chi2:.3f}, p = {p_val:.4f}")
-
-            h = cohens_h(rates["haiku_floop"], rates["haiku_bare"])
-            console.print(f"    Cohen's h = {h:.3f}")
 
     # Cost efficiency
     console.print()
