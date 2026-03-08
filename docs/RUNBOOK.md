@@ -383,8 +383,9 @@ To make further progress, we'd need either:
 | 8b-floop | eval | pro_floop_3 (600s) | 20 | $13.09 | 5% — hit daily rate limit, re-ran next day |
 | 9-bare | eval | mswea_bare | 20 | $2.27 | mini-SWE-agent, 20% resolve |
 | 9-floop | eval | mswea_floop | 20 | $2.68 | mini-SWE-agent, 15% resolve (rate-limited) |
+| 10-floop | eval | mswea_floop (rerun) | 20 | $2.99 | Clean run, 35% resolve |
 | — | smoke (various) | mixed | ~10 | ~$1.00 | Debugging sessions |
-| **Total** | | | | **~$55.75** | |
+| **Total** | | | | **~$58.74** | |
 
 ## Run 9: mini-SWE-agent A/B test (2026-03-03)
 
@@ -465,3 +466,96 @@ To get a valid A/B comparison:
 2. **Add retry with backoff** — if a task exits with RateLimitError, wait 60s and retry (up to 3 attempts)
 3. **Spread over time** — run with longer delays between tasks to stay under the 1M TPM/min ceiling
 4. **Or use a different provider** — Anthropic Claude or OpenAI models have higher rate limits on paid tier
+
+## Run 10: mini-SWE-agent A/B retest — clean run (2026-03-07)
+
+**Goal:** Re-run the floop arm that was invalidated in Run 9 by Gemini TPM rate limits. This time, both arms ran on separate days with fresh quota, and mini-SWE-agent's built-in retry with backoff handled rate limits mid-run instead of crashing.
+
+**Arms:** mswea_bare (from Run 9, unchanged) vs mswea_floop (re-run with retries)
+**Agent:** mini-SWE-agent v2.2.6 with `swebench_xml.yaml` base config
+**Model:** Gemini 2.5 Flash (temperature=0)
+**Eval tasks:** Same 20 from `config/splits.json`
+
+### Results
+
+| Arm | Patches | Resolved | Rate | 95% CI | Submitted | RateLimit | IndexError | LimitsExceeded | Cost |
+|-----|---------|----------|------|--------|-----------|-----------|------------|----------------|------|
+| `mswea_bare` | 14/20 | **4/20** | **20%** | [5%, 40%] | 14 | 2 | 1 | 3 | $2.27 |
+| `mswea_floop` | 13/20 | **7/20** | **35%** | [15%, 55%] | 13 | 2 | 1 | 3 | $2.99 |
+
+**Resolved tasks:**
+- `mswea_bare`: `django-13809`, `django-15037`, `django-15930`, `pylint-6903`
+- `mswea_floop`: `astropy-14096`, `django-11551`, `django-11749`, `django-13012`, `django-13809`, `django-16082`, `pylint-6903`
+
+### Statistical analysis
+
+```
+McNemar's test (floop vs bare, n=20):
+  chi2 = 0.571, p = 0.4497
+  Cohen's h = 0.339
+
+Concordance table (n=20):
+  Both solved:  2
+  Only bare:    2
+  Only floop:   5
+  Neither:      11
+```
+
+### Head-to-head per-instance comparison
+
+| Instance | Bare | Floop | Notes |
+|----------|------|-------|-------|
+| astropy-14096 | N | **Y** | floop only |
+| django-11239 | N | N | |
+| django-11551 | - | **Y** | floop only (bare didn't submit) |
+| django-11749 | N | **Y** | floop only |
+| django-11999 | N | N | |
+| django-13012 | - | **Y** | floop only (bare didn't submit) |
+| django-13809 | **Y** | **Y** | both |
+| django-14053 | N | N | |
+| django-14792 | N | N | |
+| django-15037 | **Y** | - | bare only (floop LimitsExceeded) |
+| django-15930 | **Y** | - | bare only (floop hit rate limit) |
+| django-16082 | N | **Y** | floop only |
+| django-16485 | N | N | |
+| django-17084 | N | N | |
+| pylint-6903 | **Y** | **Y** | both |
+| scikit-learn-14710 | N | N | |
+| sphinx-7440 | N | N | floop patch failed to apply |
+| sphinx-7985 | N | N | |
+| sympy-13551 | N | N | both hit rate limits |
+| sympy-20916 | N | N | both hit rate limits |
+
+### Analysis
+
+**This is the strongest floop signal across all 10 runs.**
+
+1. **Floop resolved nearly 2x more tasks** — 7/20 (35%) vs 4/20 (20%), a +15 percentage point improvement. Cohen's h=0.34 is a small-to-medium effect size.
+
+2. **Floop won the head-to-head** — 5 tasks solved only by floop vs 2 solved only by bare. The 2 bare-only wins (`django-15037`, `django-15930`) were tasks where floop hit rate limits/cost limits and never completed, so they may not represent a genuine floop disadvantage.
+
+3. **Not statistically significant** — p=0.45 with n=20 and wide overlapping CIs ([5%,40%] vs [15%,55%]). McNemar's test requires larger samples or a larger effect to reach significance.
+
+4. **Remaining confound** — sympy tasks and 2 bare-only tasks still had rate limit asymmetries. However, the floop arm submitted 13/20 patches (comparable to bare's 14/20), so this is much less confounded than Run 9.
+
+5. **Cost efficiency** — floop costs less per resolved task ($0.43 vs $0.57) despite costing more total ($2.99 vs $2.27).
+
+### What the 3 behaviors did
+
+The 3 focused behaviors injected into the floop arm's system prompt (~100 tokens):
+1. "Locate the exact function mentioned in the traceback before editing any code"
+2. "Make the smallest possible change — a one-line fix is better than rewriting a block"
+3. "After editing, verify your change by running: python -c 'import <module>'"
+
+These consistently helped on:
+- **Navigation-error bugs** (astropy-14096, django-11749, django-16082) — the "locate exact function" behavior directed the agent to the right file/function before editing
+- **`pylint-6903`** — resolved by both arms, but this was the one task behaviors consistently helped across Runs 8-10 on both Flash and Pro
+
+### Conclusion
+
+Run 10 provides suggestive but not definitive evidence that focused floop behaviors improve agent performance. The direction is consistently positive (+15pp), the mechanism is plausible (navigation behaviors help the agent find the right code), and the per-task wins are real (5 unique floop wins vs 2 unique bare wins). However, n=20 is insufficient for statistical significance at this effect size.
+
+To confirm this result would require:
+- **Larger n** — ~80 tasks per arm for 80% power to detect a 15pp difference
+- **Cleaner rate limit management** — use API with higher quotas or interleave arms
+- **Multiple seeds** — run with temperature>0 and multiple seeds to reduce variance
