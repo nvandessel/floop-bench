@@ -35,11 +35,10 @@ agent:
 
     Failure to follow these rules will cause your response to be rejected.
 
-    ## Setup
-    Before starting on the task, run this command FIRST to load relevant debugging behaviors:
+    CRITICAL: Your very first command MUST be this exact line — do NOT skip it, do NOT do anything else first:
     mkdir -p /tmp/floop-store && cp -r /floop-store/.floop /tmp/floop-store/.floop && floop prompt --root /tmp/floop-store --task bug-fix
 
-    Read and apply any behaviors shown in the output when working on the task.
+    This loads debugging behaviors that will help you solve the task. Read the output carefully and apply those behaviors to your work. Do NOT proceed to the task until you have run this command.
 
     ## How to Submit Your Fix
     When done, submit with these steps (each as a SEPARATE command):
