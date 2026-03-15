@@ -64,9 +64,7 @@ def cohens_h(p1: float, p2: float) -> float:
     return 2 * math.asin(math.sqrt(p1)) - 2 * math.asin(math.sqrt(p2))
 
 
-def mcnemar_test(
-    outcomes_a: list[bool], outcomes_b: list[bool]
-) -> tuple[float, float]:
+def mcnemar_test(outcomes_a: list[bool], outcomes_b: list[bool]) -> tuple[float, float]:
     """
     McNemar's test for paired binary outcomes.
     Returns (chi2, p_value).
@@ -154,8 +152,12 @@ def analyze():
         common = set(bare_runs) & set(floop_runs)
 
         if common:
-            bare_outcomes = [bool(bare_runs[tid].get("resolved")) for tid in sorted(common)]
-            floop_outcomes = [bool(floop_runs[tid].get("resolved")) for tid in sorted(common)]
+            bare_outcomes = [
+                bool(bare_runs[tid].get("resolved")) for tid in sorted(common)
+            ]
+            floop_outcomes = [
+                bool(floop_runs[tid].get("resolved")) for tid in sorted(common)
+            ]
             chi2, p_val = mcnemar_test(floop_outcomes, bare_outcomes)
 
             console.print(f"\n  McNemar's test (floop vs bare, n={len(common)}):")
@@ -168,7 +170,9 @@ def analyze():
             both_solved = sum(a and b for a, b in zip(bare_outcomes, floop_outcomes))
             only_bare = sum(a and not b for a, b in zip(bare_outcomes, floop_outcomes))
             only_floop = sum(not a and b for a, b in zip(bare_outcomes, floop_outcomes))
-            neither = sum(not a and not b for a, b in zip(bare_outcomes, floop_outcomes))
+            neither = sum(
+                not a and not b for a, b in zip(bare_outcomes, floop_outcomes)
+            )
             console.print(f"\n  Concordance table (n={len(common)}):")
             console.print(f"    Both solved:  {both_solved}")
             console.print(f"    Only bare:    {only_bare}")

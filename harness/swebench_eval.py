@@ -41,19 +41,28 @@ def run_swebench_evaluation(
     console.print(f"  Predictions: {predictions_path}")
 
     cmd = [
-        "python", "-m", "swebench.harness.run_evaluation",
-        "--dataset_name", dataset_name,
-        "--predictions_path", str(predictions_path),
-        "--max_workers", str(max_workers),
-        "--run_id", run_id,
+        "python",
+        "-m",
+        "swebench.harness.run_evaluation",
+        "--dataset_name",
+        dataset_name,
+        "--predictions_path",
+        str(predictions_path),
+        "--max_workers",
+        str(max_workers),
+        "--run_id",
+        run_id,
     ]
 
     try:
         result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=3600,
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=3600,
         )
         if result.returncode != 0:
-            console.print(f"[red]SWE-bench evaluation failed:[/red]")
+            console.print("[red]SWE-bench evaluation failed:[/red]")
             console.print(result.stderr[-1000:] if result.stderr else "No stderr")
             return False
         console.print(f"[green]Evaluation completed: {run_id}[/green]")
@@ -174,7 +183,9 @@ def main(arm: str, split: str | None, max_workers: int):
     run_id = f"{arm}_{split}" if split else f"{arm}_eval"
 
     success = run_swebench_evaluation(
-        predictions_path, run_id, max_workers=max_workers,
+        predictions_path,
+        run_id,
+        max_workers=max_workers,
     )
 
     if success:

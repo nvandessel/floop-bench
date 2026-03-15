@@ -35,10 +35,15 @@ class ClaudeCodeAgent:
 
         # Build command
         cmd = [
-            "claude", "-p", prompt,
-            "--output-format", "json",
-            "--model", self.model,
-            "--max-turns", "25",
+            "claude",
+            "-p",
+            prompt,
+            "--output-format",
+            "json",
+            "--model",
+            self.model,
+            "--max-turns",
+            "25",
         ]
 
         # Tool access — floop tools only for floop-enabled arms
@@ -100,9 +105,7 @@ class ClaudeCodeAgent:
             error_message=error_msg,
         )
 
-    def _build_prompt(
-        self, problem_statement: str, floop_context: str | None
-    ) -> str:
+    def _build_prompt(self, problem_statement: str, floop_context: str | None) -> str:
         preamble = ""
         if floop_context:
             preamble = (

@@ -128,9 +128,7 @@ floop learn --right "Always check for None before accessing .attribute in Django
 - Focus on the transferable insight, not the specific fix"""
 
 
-def build_floop_preamble(
-    behaviors: list[dict], include_cadence: bool = True
-) -> str:
+def build_floop_preamble(behaviors: list[dict], include_cadence: bool = True) -> str:
     """
     Convert active behaviors into a text preamble for agent prompt injection.
 
@@ -171,9 +169,7 @@ def build_floop_preamble(
     return "\n\n".join(parts)
 
 
-def get_floop_context(
-    store_path: Path, task_type: str | None = None
-) -> str | None:
+def get_floop_context(store_path: Path, task_type: str | None = None) -> str | None:
     """
     Get floop context for prompt injection.
 

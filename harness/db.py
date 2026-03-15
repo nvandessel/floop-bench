@@ -149,9 +149,7 @@ def get_runs(arm: str | None = None, db_path: Path | None = None) -> list[dict]:
                 "SELECT * FROM runs WHERE arm = ? ORDER BY created_at", (arm,)
             ).fetchall()
         else:
-            rows = conn.execute(
-                "SELECT * FROM runs ORDER BY created_at"
-            ).fetchall()
+            rows = conn.execute("SELECT * FROM runs ORDER BY created_at").fetchall()
         return [dict(row) for row in rows]
 
 

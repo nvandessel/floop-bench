@@ -33,7 +33,7 @@ def check(name: str, fn) -> bool:
 
 
 def c_deps():
-    import click, rich, datasets, matplotlib, scipy  # noqa: F401
+    import scipy  # noqa: F401
 
     return True, ""
 
@@ -93,8 +93,15 @@ def c_claude_api():
         return False, "ANTHROPIC_API_KEY not set"
     r = subprocess.run(
         [
-            "claude", "-p", "Say OK", "--output-format", "json",
-            "--model", "claude-haiku-4-5-20251001", "--max-turns", "1",
+            "claude",
+            "-p",
+            "Say OK",
+            "--output-format",
+            "json",
+            "--model",
+            "claude-haiku-4-5-20251001",
+            "--max-turns",
+            "1",
         ],
         capture_output=True,
         text=True,
@@ -116,8 +123,13 @@ def c_single_task():
     """Run one training task end-to-end. Slow (~2 min) and costs ~$0.20."""
     r = subprocess.run(
         [
-            "uv", "run", "python", "-m", "harness.orchestrator",
-            "--phase", "smoke",
+            "uv",
+            "run",
+            "python",
+            "-m",
+            "harness.orchestrator",
+            "--phase",
+            "smoke",
         ],
         capture_output=True,
         text=True,
@@ -137,10 +149,15 @@ def c_swebench_eval():
         return False, "No predictions yet — run smoke phase first"
     r = subprocess.run(
         [
-            "python", "-m", "swebench.harness.run_evaluation",
-            "--predictions_path", str(pred_files[0]),
-            "--max_workers", "1",
-            "--run_id", "validate_check",
+            "python",
+            "-m",
+            "swebench.harness.run_evaluation",
+            "--predictions_path",
+            str(pred_files[0]),
+            "--max_workers",
+            "1",
+            "--run_id",
+            "validate_check",
         ],
         capture_output=True,
         text=True,
@@ -152,7 +169,10 @@ def c_swebench_eval():
 def c_floop():
     """Check floop CLI is available."""
     r = subprocess.run(
-        ["floop", "--version"], capture_output=True, text=True, timeout=5,
+        ["floop", "--version"],
+        capture_output=True,
+        text=True,
+        timeout=5,
     )
     return r.returncode == 0, "floop CLI not found"
 
@@ -166,7 +186,10 @@ def c_floop_store():
         if arm.floop and arm.floop_store:
             store = Path(arm.floop_store)
             if not (store / ".floop").exists() and not (store / "floop.db").exists():
-                return False, f"Floop store not initialized for arm '{name}' at {store}. Run: floop init --root {store}"
+                return (
+                    False,
+                    f"Floop store not initialized for arm '{name}' at {store}. Run: floop init --root {store}",
+                )
     return True, ""
 
 

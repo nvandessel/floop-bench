@@ -69,8 +69,13 @@ def resolve_rate_chart(arm_stats: list[dict]) -> None:
 
     bars = ax.bar(x, rates, color=colors, edgecolor="black", linewidth=0.5)
     ax.errorbar(
-        x, rates, yerr=[ci_lows, ci_highs],
-        fmt="none", color="black", capsize=5, linewidth=1.5,
+        x,
+        rates,
+        yerr=[ci_lows, ci_highs],
+        fmt="none",
+        color="black",
+        capsize=5,
+        linewidth=1.5,
     )
 
     ax.set_ylabel("Resolve Rate (%)")
@@ -83,8 +88,12 @@ def resolve_rate_chart(arm_stats: list[dict]) -> None:
     # Add rate labels on bars
     for bar, rate in zip(bars, rates):
         ax.text(
-            bar.get_x() + bar.get_width() / 2, bar.get_height() + 2,
-            f"{rate:.1f}%", ha="center", va="bottom", fontweight="bold",
+            bar.get_x() + bar.get_width() / 2,
+            bar.get_height() + 2,
+            f"{rate:.1f}%",
+            ha="center",
+            va="bottom",
+            fontweight="bold",
         )
 
     plt.tight_layout()
@@ -108,10 +117,22 @@ def cost_scatter(arm_stats: list[dict]) -> None:
         color = ARM_COLORS.get(name, "#888888")
         label = ARM_LABELS.get(name, name)
 
-        ax.scatter(avg_cost, rate, color=color, s=150, edgecolors="black",
-                   linewidth=0.5, zorder=5)
-        ax.annotate(label, (avg_cost, rate), textcoords="offset points",
-                    xytext=(10, 5), fontsize=9)
+        ax.scatter(
+            avg_cost,
+            rate,
+            color=color,
+            s=150,
+            edgecolors="black",
+            linewidth=0.5,
+            zorder=5,
+        )
+        ax.annotate(
+            label,
+            (avg_cost, rate),
+            textcoords="offset points",
+            xytext=(10, 5),
+            fontsize=9,
+        )
 
     ax.set_xlabel("Average Cost per Task ($)")
     ax.set_ylabel("Resolve Rate (%)")
@@ -147,8 +168,11 @@ def cost_per_resolved(arm_stats: list[dict]) -> None:
         plt.close(fig)
         return
 
-    colors = [ARM_COLORS.get(s["arm"], "#888888")
-              for s in arm_stats if (s["resolved_count"] or 0) > 0]
+    colors = [
+        ARM_COLORS.get(s["arm"], "#888888")
+        for s in arm_stats
+        if (s["resolved_count"] or 0) > 0
+    ]
     x = range(len(arms))
 
     bars = ax.bar(x, costs, color=colors, edgecolor="black", linewidth=0.5)
@@ -160,8 +184,12 @@ def cost_per_resolved(arm_stats: list[dict]) -> None:
 
     for bar, cost in zip(bars, costs):
         ax.text(
-            bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.1,
-            f"${cost:.2f}", ha="center", va="bottom", fontweight="bold",
+            bar.get_x() + bar.get_width() / 2,
+            bar.get_height() + 0.1,
+            f"${cost:.2f}",
+            ha="center",
+            va="bottom",
+            fontweight="bold",
         )
 
     plt.tight_layout()

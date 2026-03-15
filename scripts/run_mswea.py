@@ -106,7 +106,10 @@ def _generate_floop_behaviors() -> str:
     env = {**subprocess.os.environ, "HOME": "/tmp/floop-bench-nohome"}
     result = subprocess.run(
         [floop_bin, "prompt", "--root", str(PROJECT_ROOT), "--task", "bug-fix"],
-        capture_output=True, text=True, timeout=10, env=env,
+        capture_output=True,
+        text=True,
+        timeout=10,
+        env=env,
     )
     if result.returncode != 0:
         console.print(f"[red]floop prompt failed: {result.stderr[:200]}[/red]")
@@ -133,8 +136,11 @@ def _resolve_floop_config(config_path: Path) -> Path:
     resolved = config_text.replace("{floop_behaviors}", behaviors)
 
     tmp = tempfile.NamedTemporaryFile(
-        mode="w", suffix=".yaml", prefix="mswea_floop_",
-        dir=CONFIG_DIR, delete=False,
+        mode="w",
+        suffix=".yaml",
+        prefix="mswea_floop_",
+        dir=CONFIG_DIR,
+        delete=False,
     )
     tmp.write(resolved)
     tmp.close()
@@ -153,15 +159,24 @@ def _build_mswea_cmd(
 ) -> list[str]:
     """Build the mini-extra swebench command."""
     cmd = [
-        "mini-extra", "swebench",
-        "--subset", "verified",
-        "--split", "test",
-        "--filter", filter_re,
-        "-c", str(SWEBENCH_BASE_CONFIG),
-        "-c", str(config_path),
-        "-c", f"agent.cost_limit={cost_limit}",
-        "-o", str(output_dir),
-        "--workers", str(workers),
+        "mini-extra",
+        "swebench",
+        "--subset",
+        "verified",
+        "--split",
+        "test",
+        "--filter",
+        filter_re,
+        "-c",
+        str(SWEBENCH_BASE_CONFIG),
+        "-c",
+        str(config_path),
+        "-c",
+        f"agent.cost_limit={cost_limit}",
+        "-o",
+        str(output_dir),
+        "--workers",
+        str(workers),
         "--redo-existing",
     ]
 
@@ -178,7 +193,12 @@ def _build_mswea_cmd(
             floop_bin = str(Path(floop_bin).resolve())  # resolve symlinks
             store_mount = f"{floop_store}:/floop-store/.floop:ro"
             bin_mount = f"{floop_bin}:/usr/local/bin/floop:ro"
-            cmd.extend(["-c", f'environment.run_args=["--rm", "-v", "{store_mount}", "-v", "{bin_mount}"]'])
+            cmd.extend(
+                [
+                    "-c",
+                    f'environment.run_args=["--rm", "-v", "{store_mount}", "-v", "{bin_mount}"]',
+                ]
+            )
 
     return cmd
 
@@ -192,7 +212,12 @@ def _build_mswea_cmd(
     help="Comma-separated instance IDs (default: all eval IDs from splits.json)",
 )
 @click.option("--cost-limit", default=3.0, help="Per-instance cost limit in USD")
-@click.option("--delay", default=0, type=int, help="Seconds to sleep between tasks (rate limit mitigation)")
+@click.option(
+    "--delay",
+    default=0,
+    type=int,
+    help="Seconds to sleep between tasks (rate limit mitigation)",
+)
 def run(arm: str, workers: int, filter_ids: str | None, cost_limit: float, delay: int):
     """Run mini-SWE-agent on eval tasks for an arm."""
     container_rt = _find_container_runtime()
@@ -225,26 +250,36 @@ def run(arm: str, workers: int, filter_ids: str | None, cost_limit: float, delay
         # Run tasks one at a time with sleep between each
         for i, instance_id in enumerate(ids):
             if i > 0:
-                console.print(f"[dim]Sleeping {delay}s (rate limit mitigation)...[/dim]")
+                console.print(
+                    f"[dim]Sleeping {delay}s (rate limit mitigation)...[/dim]"
+                )
                 time.sleep(delay)
 
-            console.print(f"\n[cyan]Task {i+1}/{len(ids)}: {instance_id}[/cyan]")
+            console.print(f"\n[cyan]Task {i + 1}/{len(ids)}: {instance_id}[/cyan]")
             filter_re = _build_filter_regex([instance_id])
-            cmd = _build_mswea_cmd(arm, config_path, output_dir, filter_re, cost_limit, 1, container_rt)
+            cmd = _build_mswea_cmd(
+                arm, config_path, output_dir, filter_re, cost_limit, 1, container_rt
+            )
             result = subprocess.run(cmd, cwd=str(PROJECT_ROOT))
 
             if result.returncode != 0:
-                console.print(f"[yellow]Task {instance_id} exited with code {result.returncode}, continuing...[/yellow]")
+                console.print(
+                    f"[yellow]Task {instance_id} exited with code {result.returncode}, continuing...[/yellow]"
+                )
     else:
         # Batch mode: submit all tasks at once
         filter_re = _build_filter_regex(ids)
-        cmd = _build_mswea_cmd(arm, config_path, output_dir, filter_re, cost_limit, workers, container_rt)
+        cmd = _build_mswea_cmd(
+            arm, config_path, output_dir, filter_re, cost_limit, workers, container_rt
+        )
         console.print(f"\n  Command: {' '.join(cmd[:6])} ... [truncated]")
 
         result = subprocess.run(cmd, cwd=str(PROJECT_ROOT))
 
         if result.returncode != 0:
-            console.print(f"[red]mini-SWE-agent exited with code {result.returncode}[/red]")
+            console.print(
+                f"[red]mini-SWE-agent exited with code {result.returncode}[/red]"
+            )
             sys.exit(result.returncode)
 
     console.print(f"[green]Run complete for arm={arm}[/green]")
@@ -252,7 +287,11 @@ def run(arm: str, workers: int, filter_ids: str | None, cost_limit: float, delay
 
 
 @cli.command("import-results")
-@click.option("--arm", required=True, help="Arm name (must match output dir in results/mswea/<arm>/)")
+@click.option(
+    "--arm",
+    required=True,
+    help="Arm name (must match output dir in results/mswea/<arm>/)",
+)
 def import_results(arm: str):
     """Convert mini-SWE-agent output to floop-bench DB + JSONL."""
     init_db()
@@ -361,7 +400,9 @@ def import_results(arm: str):
 
 
 @cli.command()
-@click.option("--arm", default=None, help="Specific arm to evaluate (default: all mswea_* arms)")
+@click.option(
+    "--arm", default=None, help="Specific arm to evaluate (default: all mswea_* arms)"
+)
 @click.option("--max-workers", default=4, help="Max parallel Docker workers for eval")
 def evaluate(arm: str | None, max_workers: int):
     """Run SWE-bench evaluation on imported predictions."""
@@ -371,9 +412,7 @@ def evaluate(arm: str | None, max_workers: int):
         arms = [arm]
     else:
         # Find all mswea prediction files
-        arms = [
-            p.stem for p in PREDICTIONS_DIR.glob("mswea_*.jsonl")
-        ]
+        arms = [p.stem for p in PREDICTIONS_DIR.glob("mswea_*.jsonl")]
 
     if not arms:
         console.print("[red]No mswea prediction files found.[/red]")
@@ -390,7 +429,9 @@ def evaluate(arm: str | None, max_workers: int):
         console.print(f"\n[cyan]Evaluating {arm_name}...[/cyan]")
 
         success = run_swebench_evaluation(
-            pred_path, run_id, max_workers=max_workers,
+            pred_path,
+            run_id,
+            max_workers=max_workers,
         )
         if success:
             import_swebench_results(arm_name, run_id)
@@ -399,8 +440,12 @@ def evaluate(arm: str | None, max_workers: int):
 
 
 @cli.command()
-@click.option("--instance", default="django__django-16485", help="Instance ID for smoke test")
-@click.option("--config", "config_name", default="mswea_bare", help="Config name (without .yaml)")
+@click.option(
+    "--instance", default="django__django-16485", help="Instance ID for smoke test"
+)
+@click.option(
+    "--config", "config_name", default="mswea_bare", help="Config name (without .yaml)"
+)
 def smoke(instance: str, config_name: str):
     """Run a single-task smoke test to validate setup."""
     container_rt = _find_container_runtime()
@@ -420,7 +465,9 @@ def smoke(instance: str, config_name: str):
     console.print(f"  Container runtime: {container_rt}")
 
     filter_re = _build_filter_regex([instance])
-    cmd = _build_mswea_cmd(config_name, config_path, output_dir, filter_re, 1.0, 1, container_rt)
+    cmd = _build_mswea_cmd(
+        config_name, config_path, output_dir, filter_re, 1.0, 1, container_rt
+    )
 
     result = subprocess.run(cmd, cwd=str(PROJECT_ROOT))
 
@@ -445,7 +492,7 @@ def smoke(instance: str, config_name: str):
     patch = preds[instance].get("model_patch", "")
     has_patch = bool(patch.strip())
 
-    console.print(f"[green]Smoke test passed![/green]")
+    console.print("[green]Smoke test passed![/green]")
     console.print(f"  Patch generated: {'yes' if has_patch else 'no'}")
     if has_patch:
         console.print(f"  Patch size: {len(patch)} chars")

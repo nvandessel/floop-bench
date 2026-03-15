@@ -35,7 +35,12 @@ def _worker_task(
 ) -> RunResult:
     """Run a single task in a worker process."""
     result = run_single_task(
-        instance, arm, base_dir, transcript_dir, timeout, sandbox=sandbox,
+        instance,
+        arm,
+        base_dir,
+        transcript_dir,
+        timeout,
+        sandbox=sandbox,
     )
     save_run(result)
     append_prediction(result, prediction_dir / f"{arm.name}.jsonl")
@@ -80,8 +85,13 @@ def run_parallel(
             if spent >= budget:
                 break
             result = _worker_task(
-                instance, arm, base_dir, transcript_dir,
-                prediction_dir, timeout, sandbox=sandbox,
+                instance,
+                arm,
+                base_dir,
+                transcript_dir,
+                prediction_dir,
+                timeout,
+                sandbox=sandbox,
             )
             results.append(result)
             if on_complete:
@@ -98,8 +108,13 @@ def run_parallel(
                 break
             future = executor.submit(
                 _worker_task,
-                instance, arm, base_dir, transcript_dir,
-                prediction_dir, timeout, sandbox,
+                instance,
+                arm,
+                base_dir,
+                transcript_dir,
+                prediction_dir,
+                timeout,
+                sandbox,
             )
             futures[future] = i
 

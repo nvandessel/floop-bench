@@ -44,8 +44,7 @@ def generate_split():
 
     if len(ds) < TRAIN_SIZE + EVAL_SIZE:
         print(
-            f"Warning: dataset has {len(ds)} tasks, "
-            f"expected {TRAIN_SIZE + EVAL_SIZE}"
+            f"Warning: dataset has {len(ds)} tasks, expected {TRAIN_SIZE + EVAL_SIZE}"
         )
 
     # Group tasks by repo for stratification

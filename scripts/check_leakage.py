@@ -61,9 +61,13 @@ def _get_behaviors_from_volume(volume_name: str) -> list[dict]:
         # so pack-installed behaviors in .floop/ subdirectory are visible.
         result = subprocess.run(
             [
-                runtime, "run", "--rm",
-                "-v", f"{volume_name}:/floop-store:z",
-                "--entrypoint", "/bin/bash",
+                runtime,
+                "run",
+                "--rm",
+                "-v",
+                f"{volume_name}:/floop-store:z",
+                "--entrypoint",
+                "/bin/bash",
                 "floop-sandbox",
                 "-c",
                 "ln -sfn /floop-store/.floop /root/.floop"
@@ -83,7 +87,9 @@ def _get_behaviors_from_volume(volume_name: str) -> list[dict]:
         return []
 
 
-def scan_behaviors(behaviors: list[dict], eval_ids: list[str], eval_patches: dict[str, str]) -> int:
+def scan_behaviors(
+    behaviors: list[dict], eval_ids: list[str], eval_patches: dict[str, str]
+) -> int:
     """Scan behaviors for leakage. Returns number of leaks found."""
     print(f"Scanning {len(behaviors)} behaviors...")
 
@@ -106,18 +112,22 @@ def scan_behaviors(behaviors: list[dict], eval_ids: list[str], eval_patches: dic
                 clean_line = line[1:].strip()
                 # Skip short/generic snippets that cause false positives
                 if len(clean_line) > 30 and clean_line in content:
-                        print(
-                            f"  LEAK: Behavior {i} contains eval patch code "
-                            f"from {eid}: {clean_line[:60]}..."
-                        )
-                        leaks_found += 1
+                    print(
+                        f"  LEAK: Behavior {i} contains eval patch code "
+                        f"from {eid}: {clean_line[:60]}..."
+                    )
+                    leaks_found += 1
 
     return leaks_found
 
 
 @click.command()
-@click.option("--volume", default=None, help="Docker volume name to scan (e.g. floop-train)")
-@click.option("--store-path", default=None, type=click.Path(), help="Host path to floop store")
+@click.option(
+    "--volume", default=None, help="Docker volume name to scan (e.g. floop-train)"
+)
+@click.option(
+    "--store-path", default=None, type=click.Path(), help="Host path to floop store"
+)
 def check_leakage(volume: str | None, store_path: str | None) -> None:
     """Check behavior store for eval data leakage."""
     eval_ids = load_eval_ids()

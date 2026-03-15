@@ -22,9 +22,10 @@ os.environ["LITELLM_LOG"] = "ERROR"
 
 from agents.mini_swe import MiniSweAgent
 from floop_integration.cli import count_behaviors, learn_from_transcript
-from floop_integration.inject import build_floop_preamble, get_floop_context, get_override_context
+from floop_integration.inject import get_floop_context
 
 import litellm
+
 litellm.suppress_debug_info = True
 
 # All logging to stderr so stdout stays clean JSON
@@ -92,12 +93,20 @@ def main() -> None:
     )
 
     # Phase 3: Fallback floop learn (after agent run, real floop arms only)
-    if floop_enabled and store_path and not floop_context_override and result.transcript:
+    if (
+        floop_enabled
+        and store_path
+        and not floop_context_override
+        and result.transcript
+    ):
         behavior_count_after = count_behaviors(store_path, task_type="bug-fix")
         if behavior_count_after <= behavior_count_before:
             logger.info("Agent didn't learn — extracting insight from transcript")
             learn_from_transcript(
-                store_path, result.transcript, model, task_type="bug-fix",
+                store_path,
+                result.transcript,
+                model,
+                task_type="bug-fix",
             )
         else:
             logger.info(

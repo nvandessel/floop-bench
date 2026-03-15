@@ -45,7 +45,8 @@ def c_mini_swe_agent():
     try:
         r = subprocess.run(
             ["uv", "run", "mini-extra", "--help"],
-            capture_output=True, timeout=30,
+            capture_output=True,
+            timeout=30,
         )
         if r.returncode == 0:
             return True, ""
@@ -69,7 +70,10 @@ def c_gemini_key():
     if env_path.exists():
         for line in env_path.read_text().splitlines():
             line = line.strip()
-            if line.startswith("GEMINI_API_KEY=") and len(line.split("=", 1)[1].strip()) > 0:
+            if (
+                line.startswith("GEMINI_API_KEY=")
+                and len(line.split("=", 1)[1].strip()) > 0
+            ):
                 return True, ""
     if os.environ.get("GEMINI_API_KEY"):
         return True, ""
@@ -86,7 +90,10 @@ def c_yaml_configs():
     if not bare.exists():
         return False, f"Missing {bare}. Create it with model config for bare arm."
     if not floop.exists():
-        return False, f"Missing {floop}. Create it with model config + behaviors for floop arm."
+        return (
+            False,
+            f"Missing {floop}. Create it with model config + behaviors for floop arm.",
+        )
     return True, ""
 
 
@@ -97,7 +104,9 @@ def c_wrapper_script():
     try:
         r = subprocess.run(
             ["uv", "run", "python", "-c", "import scripts.run_mswea"],
-            capture_output=True, text=True, timeout=30,
+            capture_output=True,
+            text=True,
+            timeout=30,
         )
         if r.returncode != 0:
             return False, f"Import failed: {r.stderr[:500]}"
@@ -137,7 +146,9 @@ def main():
         print("  1. Smoke test:   uv run python -m scripts.run_mswea smoke")
         print("  2. Run bare:     uv run python -m scripts.run_mswea run --arm bare")
         print("  3. Run floop:    uv run python -m scripts.run_mswea run --arm floop")
-        print("  4. Import:       uv run python -m scripts.run_mswea import-results --arm bare")
+        print(
+            "  4. Import:       uv run python -m scripts.run_mswea import-results --arm bare"
+        )
         print("  5. Evaluate:     uv run python -m scripts.run_mswea evaluate")
         print("  6. Analyze:      uv run python -m analysis.analyze")
         sys.exit(0)

@@ -128,7 +128,9 @@ class MiniSweAgent:
                     api_retries += 1
                     logger.warning(
                         "API call failed (attempt %d/%d): %s",
-                        api_retries, max_api_retries, api_exc,
+                        api_retries,
+                        max_api_retries,
+                        api_exc,
                     )
                     if api_retries >= max_api_retries:
                         raise

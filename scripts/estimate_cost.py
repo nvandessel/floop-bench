@@ -10,7 +10,7 @@ from __future__ import annotations
 from rich.console import Console
 from rich.table import Table
 
-from harness.db import get_arm_stats, get_runs, init_db
+from harness.db import get_runs, init_db
 
 console = Console()
 

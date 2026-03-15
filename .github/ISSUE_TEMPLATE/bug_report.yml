@@ -1,0 +1,39 @@
+name: Bug Report
+description: Report a bug in floop-bench
+labels: ["bug"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What happened? What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to Reproduce
+      description: Minimal steps to reproduce the behavior
+      placeholder: |
+        1. Run `make smoke`
+        2. See error
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Your system details
+      placeholder: |
+        - OS: Linux / macOS / Windows
+        - Python version: 3.12.x
+        - Container runtime: Docker / Podman
+        - floop version (if relevant): 0.12.x
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs
+      description: Paste any error messages or log output
+      render: shell

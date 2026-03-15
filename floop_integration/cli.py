@@ -10,9 +10,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
-def get_active_behaviors(
-    store_path: Path, task_type: str | None = None
-) -> list[dict]:
+def get_active_behaviors(store_path: Path, task_type: str | None = None) -> list[dict]:
     """
     Get active behaviors from floop store via CLI.
 
@@ -29,7 +27,10 @@ def get_active_behaviors(
 
     try:
         result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=30,
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=30,
         )
         if result.returncode != 0:
             logger.warning(
@@ -52,7 +53,10 @@ def floop_available() -> bool:
     """Check if floop CLI is available on PATH."""
     try:
         result = subprocess.run(
-            ["floop", "--version"], capture_output=True, text=True, timeout=5,
+            ["floop", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         return result.returncode == 0
     except (FileNotFoundError, subprocess.TimeoutExpired):
@@ -135,18 +139,26 @@ def learn_from_transcript(
         return False
 
     cmd = [
-        "floop", "learn",
-        "--right", insight["right"],
-        "--wrong", insight["wrong"],
-        "--scope", "local",  # persist to --root store, not ephemeral ~/.floop
-        "--root", str(store_path),
+        "floop",
+        "learn",
+        "--right",
+        insight["right"],
+        "--wrong",
+        insight["wrong"],
+        "--scope",
+        "local",  # persist to --root store, not ephemeral ~/.floop
+        "--root",
+        str(store_path),
     ]
     if task_type:
         cmd.extend(["--task", task_type])
 
     try:
         result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=30,
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=30,
         )
         if result.returncode == 0:
             logger.info("Fallback learn succeeded: %s", insight["right"][:80])
@@ -154,7 +166,8 @@ def learn_from_transcript(
         else:
             logger.warning(
                 "floop learn failed (exit %d): %s",
-                result.returncode, result.stderr.strip(),
+                result.returncode,
+                result.stderr.strip(),
             )
             return False
     except (subprocess.TimeoutExpired, FileNotFoundError) as exc:
@@ -169,7 +182,9 @@ def init_store(store_path: Path) -> bool:
     try:
         result = subprocess.run(
             ["floop", "init", "--root", str(store_path)],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         return result.returncode == 0
     except (FileNotFoundError, subprocess.TimeoutExpired):

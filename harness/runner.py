@@ -9,10 +9,10 @@ import logging
 import shutil
 import subprocess
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
-from agents.base import Agent, RunResult
+from agents.base import RunResult
 from floop_integration.inject import get_floop_context, get_override_context
 from harness.config import ArmConfig, create_agent
 
@@ -57,7 +57,9 @@ def setup_repo(instance: dict, base_dir: Path) -> Path:
         bare_path.parent.mkdir(parents=True, exist_ok=True)
         subprocess.run(
             [
-                "git", "clone", "--bare",
+                "git",
+                "clone",
+                "--bare",
                 f"https://github.com/{instance['repo']}.git",
                 str(bare_path),
             ],
@@ -78,8 +80,14 @@ def setup_repo(instance: dict, base_dir: Path) -> Path:
     task_dir.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run(
         [
-            "git", "-C", str(bare_path), "worktree", "add",
-            "--detach", str(task_dir), instance["base_commit"],
+            "git",
+            "-C",
+            str(bare_path),
+            "worktree",
+            "add",
+            "--detach",
+            str(task_dir),
+            instance["base_commit"],
         ],
         check=True,
         capture_output=True,
@@ -110,18 +118,25 @@ def _run_sandboxed(
 ) -> RunResult:
     """Run agent inside a container."""
     cmd = [
-        sandbox.runtime, "run", "--rm",
+        sandbox.runtime,
+        "run",
+        "--rm",
         # Security: drop all capabilities, add only what's needed
-        "--cap-drop", "ALL",
-        "--cap-add", "CHOWN",
-        "--cap-add", "DAC_OVERRIDE",
-        "--cap-add", "FOWNER",
+        "--cap-drop",
+        "ALL",
+        "--cap-add",
+        "CHOWN",
+        "--cap-add",
+        "DAC_OVERRIDE",
+        "--cap-add",
+        "FOWNER",
         # Resource limits
         f"--memory={sandbox.memory}",
         f"--cpus={sandbox.cpus}",
         f"--pids-limit={sandbox.pids_limit}",
         # Bind mount worktree as /workspace (:z relabels for SELinux)
-        "-v", f"{task_dir.resolve()}:/workspace:z",
+        "-v",
+        f"{task_dir.resolve()}:/workspace:z",
     ]
 
     # Floop volume mount
@@ -162,7 +177,9 @@ def _run_sandboxed(
 
     logger.info(
         "Running sandboxed: %s (model=%s, floop=%s)",
-        instance["instance_id"], arm.model, arm.floop,
+        instance["instance_id"],
+        arm.model,
+        arm.floop,
     )
 
     try:
@@ -220,7 +237,7 @@ def _run_sandboxed(
     if data is not None:
         try:
             return RunResult(**data)
-        except TypeError as exc:
+        except TypeError:
             pass  # fall through to error below
 
     return RunResult(

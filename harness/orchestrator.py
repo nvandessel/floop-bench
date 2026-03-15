@@ -105,8 +105,13 @@ def print_summary() -> None:
         cost = f"${s['total_cost']:.2f}" if s["total_cost"] else "$0.00"
 
         table.add_row(
-            s["arm"], str(total), str(completed), str(resolved),
-            rate, avg_dur, cost,
+            s["arm"],
+            str(total),
+            str(completed),
+            str(resolved),
+            rate,
+            avg_dur,
+            cost,
         )
 
     console.print(table)
@@ -116,6 +121,7 @@ def print_summary() -> None:
 # ---------------------------------------------------------------------------
 # Docker helpers
 # ---------------------------------------------------------------------------
+
 
 def _image_exists(runtime: str, image: str = SANDBOX_IMAGE) -> bool:
     """Check if the sandbox image exists locally."""
@@ -168,7 +174,9 @@ def _ensure_volume(runtime: str, name: str) -> bool:
         return False
 
 
-def _init_floop_in_volume(runtime: str, volume_name: str, image: str = SANDBOX_IMAGE) -> bool:
+def _init_floop_in_volume(
+    runtime: str, volume_name: str, image: str = SANDBOX_IMAGE
+) -> bool:
     """Run `floop init` + install packs inside a single temporary container.
 
     Installs two packs:
@@ -188,19 +196,28 @@ def _init_floop_in_volume(runtime: str, volume_name: str, image: str = SANDBOX_I
         f" && floop pack install '{core_pack_url}' --root /floop-store"
     )
     if local_pack.exists():
-        script += " && floop pack install /tmp/swe-bench-expert.fpack --root /floop-store"
+        script += (
+            " && floop pack install /tmp/swe-bench-expert.fpack --root /floop-store"
+        )
 
     cmd = [
-        runtime, "run", "--rm",
-        "-v", f"{volume_name}:/floop-store",
+        runtime,
+        "run",
+        "--rm",
+        "-v",
+        f"{volume_name}:/floop-store",
     ]
     if local_pack.exists():
         cmd.extend(["-v", f"{local_pack}:/tmp/swe-bench-expert.fpack:ro,z"])
-    cmd.extend([
-        "--entrypoint", "/bin/bash",
-        image,
-        "-c", script,
-    ])
+    cmd.extend(
+        [
+            "--entrypoint",
+            "/bin/bash",
+            image,
+            "-c",
+            script,
+        ]
+    )
 
     try:
         result = subprocess.run(
@@ -232,8 +249,11 @@ def _run_leakage_audit(volume_name: str) -> bool:
     try:
         result = subprocess.run(
             [
-                sys.executable, "-m", "scripts.check_leakage",
-                "--volume", volume_name,
+                sys.executable,
+                "-m",
+                "scripts.check_leakage",
+                "--volume",
+                volume_name,
             ],
             timeout=120,
         )
@@ -307,7 +327,11 @@ def _setup_sandbox(
 
     console.print(
         f"[green]Sandbox: enabled ({runtime})[/green]"
-        + (f" | Volume: {floop_volume} ({'ro' if floop_readonly else 'rw'})" if floop_volume else "")
+        + (
+            f" | Volume: {floop_volume} ({'ro' if floop_readonly else 'rw'})"
+            if floop_volume
+            else ""
+        )
     )
 
     return SandboxConfig(
@@ -328,9 +352,26 @@ def _setup_sandbox(
 @click.option("--budget", default=55.0, help="Maximum total cost in USD")
 @click.option("--workers", default=1, help="Number of parallel workers")
 @click.option("--timeout", default=300, help="Per-task timeout in seconds")
-@click.option("--arm", "arm_names", multiple=True, help="Arm(s) to run (repeatable). Defaults depend on phase.")
-@click.option("--no-sandbox", is_flag=True, default=False, help="Disable Docker sandbox (run agents directly on host)")
-def main(phase: str, budget: float, workers: int, timeout: int, arm_names: tuple[str, ...], no_sandbox: bool):
+@click.option(
+    "--arm",
+    "arm_names",
+    multiple=True,
+    help="Arm(s) to run (repeatable). Defaults depend on phase.",
+)
+@click.option(
+    "--no-sandbox",
+    is_flag=True,
+    default=False,
+    help="Disable Docker sandbox (run agents directly on host)",
+)
+def main(
+    phase: str,
+    budget: float,
+    workers: int,
+    timeout: int,
+    arm_names: tuple[str, ...],
+    no_sandbox: bool,
+):
     """Run floop-bench experiments."""
     init_db()
 
@@ -397,9 +438,15 @@ def main(phase: str, budget: float, workers: int, timeout: int, arm_names: tuple
 
     if workers > 1:
         results = run_parallel(
-            instance_queue, BASE_DIR, TRANSCRIPT_DIR, PREDICTION_DIR,
-            workers=workers, budget=budget, timeout=timeout,
-            on_complete=on_complete, sandbox=sandbox,
+            instance_queue,
+            BASE_DIR,
+            TRANSCRIPT_DIR,
+            PREDICTION_DIR,
+            workers=workers,
+            budget=budget,
+            timeout=timeout,
+            on_complete=on_complete,
+            sandbox=sandbox,
         )
     else:
         # Sequential
@@ -413,7 +460,11 @@ def main(phase: str, budget: float, workers: int, timeout: int, arm_names: tuple
                 break
 
             result = run_single_task(
-                instance, arm, BASE_DIR, TRANSCRIPT_DIR, timeout,
+                instance,
+                arm,
+                BASE_DIR,
+                TRANSCRIPT_DIR,
+                timeout,
                 sandbox=sandbox,
             )
             save_run(result)
