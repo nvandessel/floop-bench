@@ -8,7 +8,7 @@
 
 set -uo pipefail
 
-# Load API keys
+# Load API keys — see .env.example for format
 source .env && export GEMINI_API_KEY
 
 echo "=== Run 11: Overnight A/B test ==="

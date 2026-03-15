@@ -4,6 +4,7 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
+# Load API keys — see .env.example for format
 source .env 2>/dev/null
 export GEMINI_API_KEY
 
