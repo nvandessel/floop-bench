@@ -1,26 +1,79 @@
 # floop-bench
 
-A benchmark harness for evaluating [floop](https://github.com/nvandessel/floop) on [SWE-bench](https://www.swebench.com/) tasks. Compares model performance with and without floop-injected behaviors across multiple experimental arms.
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![CI](https://github.com/nvandessel/floop-bench/actions/workflows/ci.yml/badge.svg)](https://github.com/nvandessel/floop-bench/actions/workflows/ci.yml)
 
-## Overview
+**Can AI agents learn from corrections and get better at coding tasks?**
 
-floop-bench runs coding agents against real GitHub issues from the SWE-bench Verified dataset, then evaluates the generated patches using SWE-bench's Docker-based test harness. It's designed to be **agent-agnostic** — any agent that takes an issue and a repo and returns a diff can plug in.
+floop-bench is an open benchmark for testing that question. It evaluates [floop](https://github.com/nvandessel/floop) — a tool that helps AI agents learn from human corrections — by running controlled A/B experiments on real software engineering tasks from [SWE-bench Verified](https://www.swebench.com/).
 
-The harness supports multiple experimental arms (model + agent + floop configuration), parallel execution, automatic resume, budget controls, and statistical analysis.
+Every result is published here, whether it helps or hurts floop's case. The goal is truth, not marketing.
 
-## Prerequisites
+## What We've Found So Far
+
+We've run 11 experiments across 4 months. Here are the key results:
+
+| Run | What Was Tested | Bare | Floop | Delta | p-value | Significant? |
+|-----|----------------|------|-------|-------|---------|-------------|
+| 10 | 3 hand-written heuristics in system prompt | 4/20 (20%) | 7/20 (35%) | +15pp | 0.45 | No |
+| 11a | `floop prompt` output from 3-behavior store | Pending | — | — | — | — |
+
+**Total project spend:** ~$59
+
+The strongest signal so far is a +15 percentage point improvement from three focused behavioral heuristics (Run 10). This is a medium effect size (Cohen's h = 0.34), but **not statistically significant** at n=20 tasks. We need larger sample sizes, multiple model families, and more runs to draw real conclusions.
+
+For the full experiment log with methodology, versions, and analysis for every run, see [docs/RUNBOOK.md](docs/RUNBOOK.md).
+
+## How We Test
+
+Each experiment compares two arms on the same set of SWE-bench Verified tasks:
+
+- **Bare arm**: A coding agent with no behavioral guidance
+- **Floop arm**: The same agent with floop-generated behaviors injected into its system prompt
+
+The agent runs inside a Docker sandbox, attempts to fix a real GitHub issue, and produces a git patch. [SWE-bench's Docker-based evaluator](https://github.com/princeton-nlp/SWE-bench) runs the repository's test suite against the patch to determine pass/fail.
+
+Statistical analysis uses bootstrap confidence intervals and McNemar's test for paired comparisons. See [SPEC.md](SPEC.md) for the full experimental design.
+
+### What counts as "floop"
+
+We're careful to separate the tool from the technique:
+
+- **Runs 7-10** tested hand-written heuristics injected as raw text — this tests the *technique* of behavioral prompting, not floop itself
+- **Run 11+** tests `floop prompt` — the actual floop binary generating behavior text from a learned store
+
+Both findings are valuable. We report exactly what was tested in each run.
+
+## Where This Is Going
+
+floop-bench is currently a manual evaluation harness. The roadmap:
+
+| Level | Automated | Manual | Phase |
+|-------|-----------|--------|-------|
+| Manual | Nothing | Everything | **Now** (Runs 1-11) |
+| Semi-auto | Post-consolidation tier 1 | Human reviews results | v0 |
+| Auto + guardrails | Full loop overnight, proposes changes | Human approves | v1 |
+| Full auto | Hypothesize, test, keep/discard | Weekly summary review | v2 |
+
+When floop-bench gains the ability to autonomously hypothesize and test consolidation parameters, it becomes **floop-research**.
+
+## Project Status
+
+floop-bench is an active research project. The harness has been used for 11 experiment runs across multiple model configurations. The evaluation pipeline (task execution, SWE-bench evaluation, statistical analysis) is stable. Results update with each run.
+
+## Getting Started
+
+### Prerequisites
 
 - Python 3.12+
 - [uv](https://docs.astral.sh/uv/)
 - Docker or Podman
 - An API key for at least one model provider (see below)
 
-All other dependencies (floop CLI, litellm, agent code) are packaged in the sandbox container image, built via `make build`.
-
-## Setup
+### Setup
 
 ```bash
-git clone git@github.com:nvandessel/floop-bench.git
+git clone https://github.com/nvandessel/floop-bench.git
 cd floop-bench
 uv sync
 
@@ -30,19 +83,9 @@ make build
 
 ### API Keys
 
-Copy `.env` and add your key(s). The Makefile loads this automatically:
-
 ```bash
 cp .env.example .env
 # Edit .env with your key(s)
-```
-
-`.env` format:
-
-```
-GEMINI_API_KEY=your-key-here
-# ANTHROPIC_API_KEY=sk-ant-...
-# OPENAI_API_KEY=sk-...
 ```
 
 Set whichever keys you need for the models configured in `config/arms.toml`. Keys are forwarded into sandbox containers automatically.
@@ -53,56 +96,24 @@ Validate the environment:
 uv run python -m scripts.validate_harness
 ```
 
-All checks should pass before running experiments.
-
-## Usage
-
-### Smoke test
-
-Run 2 tasks end-to-end to validate the pipeline:
+### Running Experiments
 
 ```bash
+# Smoke test (2 tasks, validates the pipeline)
 make smoke
-# or with a specific arm:
-make smoke ARM=gemini_flash_bare
-```
 
-### Training phase
-
-Run the baseline model on 30 training tasks. The agent uses floop organically during execution — learning behaviors as it works through tasks:
-
-```bash
+# Train phase (30 tasks, agent learns behaviors organically)
 make train
-```
 
-Behaviors accumulate in a Docker volume (`floop-train`) across all 30 tasks. See [docs/TRAINING.md](docs/TRAINING.md) for details.
-
-### Evaluation phase
-
-Run all configured arms on 20 eval tasks. A leakage audit runs automatically before eval proceeds:
-
-```bash
+# Eval phase (20 tasks, leakage audit runs first)
 make eval
-```
 
-The train-phase floop volume is mounted read-only — the agent can query learned behaviors but cannot learn new ones.
-
-### Manual leakage audit
-
-```bash
-make leakage
-```
-
-### Analysis
-
-```bash
+# Statistical analysis
 uv run python -m analysis.analyze
 uv run python -m analysis.charts
 ```
 
-## CLI Reference
-
-### Make targets
+### Make Targets
 
 | Target | Description |
 |--------|-------------|
@@ -114,88 +125,34 @@ uv run python -m analysis.charts
 | `make leakage` | Manual leakage audit against train volume |
 | `make clean` | Remove volumes and sandbox image |
 
-Override defaults with env-style args: `make smoke ARM=gemini_flash_bare TIMEOUT=600 BUDGET=10`
+Override defaults: `make smoke ARM=gemini_flash_bare TIMEOUT=600 BUDGET=10`
 
-### Orchestrator (direct)
+### Configuration
 
-```
-uv run python -m harness.orchestrator --phase {smoke,train,eval} [OPTIONS]
-```
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--phase` | required | Experiment phase |
-| `--budget` | 55.0 | Max total spend (USD) before halting |
-| `--workers` | 1 | Number of parallel workers |
-| `--timeout` | 300 | Per-task timeout (seconds) |
-| `--no-sandbox` | off | Disable Docker sandbox (run agents directly on host) |
-
-Re-running the same phase skips completed tasks automatically.
-
-### SWE-bench Evaluation
-
-```
-uv run python -m harness.swebench_eval --arm ARM [--split SPLIT] [--max-workers N]
-```
-
-### Utility Scripts
-
-| Script | Description |
-|--------|-------------|
-| `scripts.validate_harness` | Run 8 progressive environment checks |
-| `scripts.generate_split` | Generate train/eval split (already committed) |
-| `scripts.check_leakage` | Scan behavior store for eval data contamination (`--volume` for Docker volumes) |
-| `scripts.estimate_cost` | Project remaining cost from historical run data |
-
-## Configuration
-
-### Arms
-
-Arms are defined in `config/arms.toml`. Each arm specifies a model, an agent backend, and whether floop is enabled:
-
-```toml
-[arms.gpt4o_bare]
-agent = "mini_swe"
-model = "openai/gpt-4o"
-floop = false
-
-[arms.gpt4o_mini_floop]
-agent = "mini_swe"
-model = "openai/gpt-4o-mini"
-floop = true
-floop_store = "behaviors/store"
-```
-
-Model strings use [litellm format](https://docs.litellm.ai/docs/providers) (`provider/model-name`). Any litellm-supported model works — Anthropic, OpenAI, Google, Groq, Ollama, and others. See `config/arms.toml` for examples.
-
-### Agents
+Arms are defined in `config/arms.toml`. Each arm specifies a model, an agent backend, and whether floop is enabled. Model strings use [litellm format](https://docs.litellm.ai/docs/providers) — any litellm-supported model works.
 
 Two agent backends are included:
 
-- **`mini_swe`** — Lightweight agent loop using [litellm](https://github.com/BerriAI/litellm). Works with any litellm-supported model.
-- **`claude_code`** — Wraps the [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI.
+- **`mini_swe`** — Lightweight agent loop using [litellm](https://github.com/BerriAI/litellm)
+- **`claude_code`** — Wraps the [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI
 
-New agents can be added by implementing the protocol in `agents/base.py` and registering in `harness/config.py`.
+New agents can be added by implementing the protocol in `agents/base.py`.
 
 ### Dataset
 
-50 tasks sampled from [SWE-bench Verified](https://huggingface.co/datasets/princeton-nlp/SWE-bench_Verified) (seed 42), stratified by repo into 30 train / 20 eval. The split is committed at `config/splits.json`.
+50 tasks sampled from SWE-bench Verified (seed 42), stratified by repo into 30 train / 20 eval. The split is committed at `config/splits.json`.
 
-## Output
+### Cost Controls
 
-| Path | Contents |
-|------|----------|
-| `results/results.db` | SQLite database with all run data |
-| `results/predictions/` | JSONL files per arm (SWE-bench format) |
-| `results/transcripts/` | Raw agent output per run |
-| `results/charts/` | Generated PNG/SVG charts |
-
-## Cost Controls
-
-The orchestrator tracks cumulative API spend and halts when `--budget` is exceeded. Interrupted runs resume automatically. Use `scripts.estimate_cost` for projections based on prior run data.
+The orchestrator tracks cumulative API spend and halts when `--budget` is exceeded. Interrupted runs resume automatically. Use `scripts.estimate_cost` for projections.
 
 ## Further Reading
 
-- [docs/TRAINING.md](docs/TRAINING.md) — Behavior creation protocol and leakage rules
+- [docs/RUNBOOK.md](docs/RUNBOOK.md) — Full experiment log with per-run results
+- [SPEC.md](SPEC.md) — Experimental design specification
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — Technical architecture and data flow
-- [SPEC.md](SPEC.md) — Full experimental design specification
+- [docs/TRAINING.md](docs/TRAINING.md) — Behavior creation protocol and leakage rules
+
+## License
+
+[Apache License 2.0](LICENSE)
