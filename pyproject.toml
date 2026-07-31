@@ -11,7 +11,7 @@ dependencies = [
     "scipy>=1.0",
     "numpy>=1.24",
     "tomli>=2.0;python_version<'3.11'",
-    "litellm>=1.0",
+    "litellm>=1.0,<1.82.7",  # 1.82.7+ compromised (malicious .pth, 2026-03-24)
     "swebench>=4.1.0",
     "mini-swe-agent>=2.2.6",
 ]

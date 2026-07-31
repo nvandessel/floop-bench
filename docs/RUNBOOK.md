@@ -589,13 +589,18 @@ To confirm this result would require:
 **Relationship to Runs 8-10:** The 3 behaviors in the store have identical *content* to the hand-written heuristics from Runs 8-10. The difference is provenance: these are floop behavior nodes (`nodes.jsonl`) processed by `floop prompt`, not raw strings in YAML. The output formatting (headers, categorization by kind) comes from floop. If results match Run 10 (~35% floop vs ~20% bare), it confirms the content matters more than the delivery mechanism. If results differ, the formatting or token count difference may be a factor.
 
 **Versions:**
-- floop: v0.12.3 (commit cb8df81, built 2026-03-09T23:29:03Z)
+- floop: v0.13.0 (commit edc8fcb, built 2026-03-14T21:40:52Z)
 - mini-SWE-agent: v2.2.6
 - litellm: 1.81.16
 - Model: Gemini 2.5 Flash via `gemini/gemini-2.5-flash` (temperature=0, drop_params=true)
-- Python: 3.14
-- Container runtime: Docker
-- OS: Linux 6.19.6-2-cachyos (x86_64)
+- Python: 3.14.2
+- Container runtime: Docker CE 29.3.0
+- OS: Fedora 43 / Linux 6.18.3-200.fc43.x86_64
+
+**Environment:**
+- Remote VPS connected via Tailscale
+- API keys managed via Infisical Cloud (`infisical run --` injects secrets at runtime)
+- Run command: `infisical run -- uv run python -m scripts.run_mswea run --arm <arm> --delay 540`
 
 **Arms:** mswea_bare vs mswea_floop
 **Eval tasks:** 80 from `config/splits.json` eval split (SWE-bench Verified)

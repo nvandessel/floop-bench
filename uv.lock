@@ -530,7 +530,7 @@ dev = [
 requires-dist = [
     { name = "click", specifier = ">=8.0" },
     { name = "datasets", specifier = ">=2.0" },
-    { name = "litellm", specifier = ">=1.0" },
+    { name = "litellm", specifier = ">=1.0,<1.82.7" },
     { name = "matplotlib", specifier = ">=3.0" },
     { name = "mini-swe-agent", specifier = ">=2.2.6" },
     { name = "numpy", specifier = ">=1.24" },

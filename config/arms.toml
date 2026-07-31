@@ -67,6 +67,21 @@ description = "Haiku with trained floop behaviors"
 # floop = false
 # description = "Sonnet without floop — performance ceiling"
 
+# --- Cerebras arms ---
+
+[arms.cerebras_bare]
+agent = "mini_swe"
+model = "cerebras/gpt-oss-120b"
+floop = false
+description = "GPT OSS 120B via Cerebras — no floop"
+
+[arms.cerebras_floop]
+agent = "mini_swe"
+model = "cerebras/gpt-oss-120b"
+floop = true
+floop_store = "behaviors/store"
+description = "GPT OSS 120B via Cerebras + floop behaviors"
+
 # --- Other providers ---
 #
 # [arms.gpt4o_bare]

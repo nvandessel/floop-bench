@@ -1,0 +1,85 @@
+# mini-SWE-agent config: GPT OSS 120B via Cerebras + floop behaviors
+# Cerebras inference: $0.35/M input, $0.75/M output
+# 131K context, 1M TPM, 1000 RPM on paid tier
+#
+# Uses litellm_textbased (XML action parsing) because Cerebras doesn't
+# reliably support tool/function calling. Must include full model section
+# because -c replaces (not merges) config sections.
+
+model:
+  model_name: "cerebras/gpt-oss-120b"
+  model_class: litellm_textbased
+  model_kwargs:
+    drop_params: true
+    temperature: 0.0
+  cost_tracking: "ignore_errors"
+  action_regex: "<mswea_bash_command>(.*?)</mswea_bash_command>"
+  format_error_template: |
+    Format error:
+
+    <error>
+    {{error}}
+    </error>
+
+    Please always provide EXACTLY ONE action in the `<mswea_bash_command>` block, found {{actions|length}} actions.
+
+    Please format your action in a `<mswea_bash_command>` block as shown in <response_example>.
+
+    <response_example>
+    Here are some thoughts about why you want to perform the action.
+
+    <mswea_bash_command>ls -la</mswea_bash_command>
+    </response_example>
+  observation_template: |
+    {% if output.exception_info -%}
+    <exception>{{output.exception_info}}</exception>
+    {% endif -%}
+    <returncode>{{output.returncode}}</returncode>
+    {% if output.output | length < 10000 -%}
+    <output>
+    {{ output.output -}}
+    </output>
+    {%- else -%}
+    <warning>
+    The output of your last command was too long.
+    Please try a different command that produces less output.
+    </warning>
+    {%- set elided_chars = output.output | length - 10000 -%}
+    <output_head>
+    {{ output.output[:5000] }}
+    </output_head>
+    <elided_chars>
+    {{ elided_chars }} characters elided
+    </elided_chars>
+    <output_tail>
+    {{ output.output[-5000:] }}
+    </output_tail>
+    {%- endif -%}
+
+run:
+  env_startup_command: |
+    mkdir -p /tmp/floop-store && cp -r /floop-store/.floop /tmp/floop-store/.floop
+
+agent:
+  system_template: |
+    You are a helpful assistant that can interact multiple times with a computer shell to solve programming tasks.
+    Your response must contain exactly ONE bash code block with ONE command (or commands connected with && or ||).
+
+    Include a THOUGHT section before your command where you explain your reasoning process.
+    Format your response as shown in <format_example>.
+
+    <format_example>
+    THOUGHT: Your reasoning and analysis here
+
+    <mswea_bash_command>your_command_here</mswea_bash_command>
+    </format_example>
+
+    Failure to follow these rules will cause your response to be rejected.
+
+    {floop_behaviors}
+
+    ## How to Submit Your Fix
+    When done, submit with these steps (each as a SEPARATE command):
+    1. Create patch: git diff -- path/to/modified_file.py > patch.txt
+    2. Submit: echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt
+    Do NOT skip submission — your fix is lost if you don't submit.
